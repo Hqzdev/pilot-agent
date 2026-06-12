@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_url="${DEVAGENT_REPO_URL:-https://github.com/Muhammadcell/devagent.git}"
+repo_url="${DEVAGENT_REPO_URL:-https://github.com/Hqzdev/Pilot-Agent.git}"
 src="${DEVAGENT_SRC:-$HOME/.devagent-src}"
 bin_dir="${DEVAGENT_BIN_DIR:-$HOME/.local/bin}"
 mode="native"
