@@ -1,5 +1,7 @@
 # Skills
 
-Этот документ описывает builtin и learned skills, frontmatter schema, progressive disclosure и scoring. Здесь будут примеры `load_skill`, `save_skill` и правила deprecation для learned skills.
+This document covers builtin and learned skills, frontmatter schema,
+progressive disclosure, and scoring. It will include `load_skill`,
+`save_skill`, and learned-skill deprecation examples.
 
-<!-- TODO: заполняется на этапе skills -->
+<!-- TODO: filled during the skills stage -->

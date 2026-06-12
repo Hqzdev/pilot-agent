@@ -1,4 +1,4 @@
-# DevAgent user config. All fields are optional; defaults live in devagent/config/defaults.yaml.
+# Pilot Agent user config. All fields are optional; defaults live in pilot_agent/config/defaults.yaml.
 # Secrets are never stored here. Store only env-var names such as ANTHROPIC_API_KEY.
 
 provider: anthropic              # anthropic | openai | openrouter
@@ -7,7 +7,7 @@ api_key_env: ANTHROPIC_API_KEY
 base_url: null                   # optional proxy/self-hosted base URL
 backend: docker                  # docker | local
 sandbox:
-  image: devagent-sandbox:latest
+  image: pilot-agent-sandbox:latest
   network: bridge                # bridge | none
 summarizer_model: null           # null = use main model
 budget_ratio: 0.7

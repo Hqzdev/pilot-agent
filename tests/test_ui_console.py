@@ -6,12 +6,12 @@ from pathlib import Path
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
-from devagent.agent.types import ToolCall, ToolResult
-from devagent.cli.ui.banner import BannerState, render_banner
-from devagent.cli.ui.components import create_console
-from devagent.cli.ui.input import SlashCompleter
-from devagent.cli.ui.renderer import Renderer
-from devagent.cli.ui.status import StatusBar, StatusState
+from pilot_agent.agent.types import ToolCall, ToolResult
+from pilot_agent.cli.ui.banner import BannerState, render_banner
+from pilot_agent.cli.ui.components import create_console
+from pilot_agent.cli.ui.input import SlashCompleter
+from pilot_agent.cli.ui.renderer import Renderer
+from pilot_agent.cli.ui.status import StatusBar, StatusState
 
 
 def test_tool_renderer_snapshot() -> None:
@@ -86,7 +86,7 @@ def test_slash_completer_filters_commands_and_skills() -> None:
 
 
 def test_ui_hex_colors_only_live_in_theme() -> None:
-    ui_dir = Path("devagent/cli/ui")
+    ui_dir = Path("pilot_agent/cli/ui")
     offenders: list[str] = []
     pattern = re.compile(r"#[0-9A-Fa-f]{6}")
     for path in ui_dir.glob("*.py"):

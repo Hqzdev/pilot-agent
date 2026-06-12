@@ -7,12 +7,12 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from devagent.agent.phases import PHASES
-from devagent.backends.local import LocalBackend
-from devagent.cli import app
-from devagent.config.credentials import get_credential
-from devagent.config.schema import load_config
-from devagent.tools.web_fetch import WebFetchTool
+from pilot_agent.agent.phases import PHASES
+from pilot_agent.backends.local import LocalBackend
+from pilot_agent.cli import app
+from pilot_agent.config.credentials import get_credential
+from pilot_agent.config.schema import load_config
+from pilot_agent.tools.web_fetch import WebFetchTool
 
 
 def test_local_backend_exec_and_blocklist(tmp_path: Path) -> None:
@@ -31,7 +31,7 @@ def test_backend_tools_settings_and_auth_commands(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     home = tmp_path / "home"
-    monkeypatch.setenv("DEVAGENT_HOME", str(home))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(home))
     runner = CliRunner()
 
     backend = runner.invoke(app, ["backend", "local"])
@@ -78,7 +78,7 @@ def test_credentials_file_does_not_touch_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     home = tmp_path / "home"
-    monkeypatch.setenv("DEVAGENT_HOME", str(home))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(home))
     runner = CliRunner()
 
     result = runner.invoke(app, ["auth", "set", "brave", "brave-secret"])

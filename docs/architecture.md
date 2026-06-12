@@ -1,5 +1,7 @@
 # Architecture
 
-Этот документ описывает один ход AgentLoop: сбор system prompt, context preparation, provider complete, tool execution, artifacts и session log. Здесь будут диаграммы канонического формата сообщений и границы ответственности модулей.
+This document covers one AgentLoop turn: system prompt assembly, context
+preparation, provider completion, tool execution, artifacts, and session log.
+It will include canonical message diagrams and module responsibility boundaries.
 
-<!-- TODO: заполняется на этапе architecture -->
+<!-- TODO: filled during the architecture stage -->

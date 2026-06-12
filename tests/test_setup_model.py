@@ -7,15 +7,15 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from devagent.cli import app, setup_wizard
-from devagent.config.schema import load_config
+from pilot_agent.cli import app, setup_wizard
+from pilot_agent.config.schema import load_config
 
 
 def test_setup_with_existing_env_key_writes_config_without_secret(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-secret")
     monkeypatch.setattr(setup_wizard, "_docker_available", lambda: True)
     runner = CliRunner()
@@ -43,7 +43,7 @@ def test_setup_env_file_secret_has_0600_permissions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     monkeypatch.setattr(setup_wizard, "_docker_available", lambda: True)
     runner = CliRunner()
 
@@ -75,7 +75,7 @@ def test_dotenv_is_loaded_for_api_key_presence(
 
 
 def test_model_direct_switch_and_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     runner = CliRunner()
 
     switch = runner.invoke(app, ["model", "openrouter:qwen/qwen3-coder"])
@@ -95,13 +95,13 @@ def test_model_invalid_provider_is_actionable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     runner = CliRunner()
 
     result = runner.invoke(app, ["model", "bad:model"])
 
     assert result.exit_code == 1
-    assert "Run: devagent setup" in result.output
+    assert "Run: pilot-agent setup" in result.output
 
 
 def test_setup_wizard_can_be_called_directly_with_defaults(
@@ -110,17 +110,17 @@ def test_setup_wizard_can_be_called_directly_with_defaults(
 ) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "secret")
     monkeypatch.setattr(
-        setup_wizard.DevAgentInput,
+        setup_wizard.PilotAgentInput,
         "prompt",
         lambda self, *args, **kwargs: kwargs["default"],
     )
     monkeypatch.setattr(
-        setup_wizard.DevAgentInput,
+        setup_wizard.PilotAgentInput,
         "confirm",
         lambda self, *args, **kwargs: kwargs["default"],
     )
     monkeypatch.setattr(
-        setup_wizard.DevAgentInput,
+        setup_wizard.PilotAgentInput,
         "ask_int",
         lambda self, *args, **kwargs: kwargs["default"],
     )

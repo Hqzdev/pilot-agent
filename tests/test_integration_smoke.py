@@ -9,13 +9,13 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-from devagent.agent.context import ContextManager, StaticSummaryProvider
-from devagent.agent.loop import AgentLoop, restore_phase_from_session
-from devagent.agent.state import init_project_state, read_session_messages
-from devagent.agent.types import CompletionResponse, Message, Role, ToolCall, ToolSpec
-from devagent.cli import app
-from devagent.providers.base import Provider
-from devagent.tools.base import Tool, ToolRegistry
+from pilot_agent.agent.context import ContextManager, StaticSummaryProvider
+from pilot_agent.agent.loop import AgentLoop, restore_phase_from_session
+from pilot_agent.agent.state import init_project_state, read_session_messages
+from pilot_agent.agent.types import CompletionResponse, Message, Role, ToolCall, ToolSpec
+from pilot_agent.cli import app
+from pilot_agent.providers.base import Provider
+from pilot_agent.tools.base import Tool, ToolRegistry
 
 
 class CompletePhaseProvider(Provider):
@@ -62,9 +62,9 @@ def test_cli_init_creates_runtime_files(tmp_path: Path) -> None:
     result = runner.invoke(app, ["init", str(project)])
 
     assert result.exit_code == 0
-    assert (project / ".devagent" / "STATE.md").exists()
-    assert (project / ".devagent" / "session.jsonl").exists()
-    assert (project / ".devagent" / "artifacts").is_dir()
+    assert (project / ".pilot-agent" / "STATE.md").exists()
+    assert (project / ".pilot-agent" / "session.jsonl").exists()
+    assert (project / ".pilot-agent" / "artifacts").is_dir()
 
 
 def test_mocked_run_progresses_and_resume_reads_phase(tmp_path: Path) -> None:
@@ -75,14 +75,14 @@ def test_mocked_run_progresses_and_resume_reads_phase(tmp_path: Path) -> None:
         registry=ToolRegistry([], tmp_path),
         ctx=ContextManager(
             StaticSummaryProvider(),
-            session_log=tmp_path / ".devagent/session.jsonl",
+            session_log=tmp_path / ".pilot-agent/session.jsonl",
         ),
     )
 
     loop.run_turn()
     restored = restore_phase_from_session(tmp_path)
     messages = read_session_messages(tmp_path)
-    session_text = (tmp_path / ".devagent" / "session.jsonl").read_text(encoding="utf-8")
+    session_text = (tmp_path / ".pilot-agent" / "session.jsonl").read_text(encoding="utf-8")
 
     assert loop.phase is not None
     assert loop.phase.name == "planning"

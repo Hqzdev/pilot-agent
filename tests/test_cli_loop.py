@@ -5,16 +5,16 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-from devagent.agent.context import ContextManager, StaticSummaryProvider
-from devagent.agent.loop import AgentLoop, restore_phase_from_session
-from devagent.agent.phases import PHASES, PIPELINE
-from devagent.agent.prompts import COMMON_PREFIX
-from devagent.agent.state import init_project_state, read_session_messages, write_session_record
-from devagent.agent.types import CompletionResponse, Message, Role, ToolCall, ToolSpec
-from devagent.cli import app
-from devagent.providers.base import Provider
-from devagent.tools.base import Tool, ToolRegistry
-from devagent.tools.skill_tools import LoadSkillTool
+from pilot_agent.agent.context import ContextManager, StaticSummaryProvider
+from pilot_agent.agent.loop import AgentLoop, restore_phase_from_session
+from pilot_agent.agent.phases import PHASES, PIPELINE
+from pilot_agent.agent.prompts import COMMON_PREFIX
+from pilot_agent.agent.state import init_project_state, read_session_messages, write_session_record
+from pilot_agent.agent.types import CompletionResponse, Message, Role, ToolCall, ToolSpec
+from pilot_agent.cli import app
+from pilot_agent.providers.base import Provider
+from pilot_agent.tools.base import Tool, ToolRegistry
+from pilot_agent.tools.skill_tools import LoadSkillTool
 
 
 class CompleteOnlyProvider(Provider):
@@ -118,7 +118,7 @@ def test_phase_pipeline_and_tools_exact() -> None:
 
 
 def test_prompts_include_required_common_rules() -> None:
-    assert "Update .devagent/STATE.md" in COMMON_PREFIX
+    assert "Update .pilot-agent/STATE.md" in COMMON_PREFIX
     assert "Call load_skill(name)" in COMMON_PREFIX
     assert "read_file existing files" in COMMON_PREFIX
 
@@ -133,7 +133,7 @@ def test_loop_turn_complete_phase_logs_and_advances(tmp_path: Path) -> None:
         registry=registry,
         ctx=ContextManager(
             StaticSummaryProvider(),
-            session_log=tmp_path / ".devagent/session.jsonl",
+            session_log=tmp_path / ".pilot-agent/session.jsonl",
         ),
     )
 
@@ -143,8 +143,8 @@ def test_loop_turn_complete_phase_logs_and_advances(tmp_path: Path) -> None:
     assert loop.phase is not None
     assert loop.phase.name == "planning"
     assert len(read_session_messages(tmp_path)) == 2
-    assert "brief" in (tmp_path / ".devagent" / "STATE.md").read_text()
-    assert "phase_change" in (tmp_path / ".devagent" / "session.jsonl").read_text()
+    assert "brief" in (tmp_path / ".pilot-agent" / "STATE.md").read_text()
+    assert "phase_change" in (tmp_path / ".pilot-agent" / "session.jsonl").read_text()
 
 
 def test_loop_pins_loaded_skill_and_records_outcome(tmp_path: Path) -> None:
@@ -163,7 +163,7 @@ def test_loop_pins_loaded_skill_and_records_outcome(tmp_path: Path) -> None:
         registry=ToolRegistry([LoadSkillTool(backend)], tmp_path),
         ctx=ContextManager(
             StaticSummaryProvider(),
-            session_log=tmp_path / ".devagent/session.jsonl",
+            session_log=tmp_path / ".pilot-agent/session.jsonl",
         ),
         skills=backend,
         phase_name="deploy",
@@ -174,7 +174,7 @@ def test_loop_pins_loaded_skill_and_records_outcome(tmp_path: Path) -> None:
     loop.run_turn()
     assert loop.phase is not None
     assert loop.phase.name == "deploy"
-    assert any("Фаза deploy завершена" in message.content for message in loop.history)
+    assert any("The deploy phase is complete." in message.content for message in loop.history)
     assert backend.outcomes == []
     loop.run_turn()
 
@@ -199,7 +199,7 @@ def test_slash_skip_advances_phase(tmp_path: Path) -> None:
         registry=ToolRegistry([NoopTool()], tmp_path),
         ctx=ContextManager(
             StaticSummaryProvider(),
-            session_log=tmp_path / ".devagent/session.jsonl",
+            session_log=tmp_path / ".pilot-agent/session.jsonl",
         ),
     )
 
@@ -207,7 +207,7 @@ def test_slash_skip_advances_phase(tmp_path: Path) -> None:
 
     assert loop.phase is not None
     assert loop.phase.name == "planning"
-    assert "phase_change" in (tmp_path / ".devagent" / "session.jsonl").read_text()
+    assert "phase_change" in (tmp_path / ".pilot-agent" / "session.jsonl").read_text()
 
 
 def test_slash_model_switches_provider(tmp_path: Path) -> None:
@@ -260,7 +260,7 @@ def test_cli_help_init_config_and_skills(tmp_path: Path) -> None:
     assert help_result.exit_code == 0
     assert "run" in help_result.output
     assert init_result.exit_code == 0
-    assert (tmp_path / "proj" / ".devagent" / "STATE.md").exists()
+    assert (tmp_path / "proj" / ".pilot-agent" / "STATE.md").exists()
     assert config_result.exit_code == 0
     assert "api_key_present" in config_result.output
     assert skills_result.exit_code == 0

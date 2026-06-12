@@ -1,5 +1,5 @@
 [project]
-name = "devagent"
+name = "pilot-agent"
 version = "0.1.0"
 description = "Local CLI agent that takes an idea to a deployed MVP."
 readme = "README.md"
@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-devagent = "devagent.cli:app"
+pilot-agent = "pilot_agent.cli:app"
 
 [dependency-groups]
 dev = [

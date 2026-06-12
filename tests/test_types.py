@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from devagent.agent.types import (
+from pilot_agent.agent.types import (
     CompletionResponse,
     Message,
     Role,
@@ -31,7 +31,7 @@ def test_tool_message_round_trip_multiple_results() -> None:
             ToolResult(
                 tool_call_id="call_1",
                 content="ok",
-                artifact_path=".devagent/artifacts/1.txt",
+                artifact_path=".pilot-agent/artifacts/1.txt",
             ),
             ToolResult(tool_call_id="call_2", content="bad", is_error=True, truncated=True),
         ],

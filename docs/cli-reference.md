@@ -1,5 +1,7 @@
 # CLI Reference
 
-Этот документ будет полной справкой по `devagent setup`, `doctor`, `model`, `config`, `run`, `resume`, slash-командам и memory/skills командам. Для каждой команды здесь будут usage, примеры и ожидаемые exit codes.
+This document will be the full reference for `pilot-agent setup`, `doctor`,
+`model`, `config`, `run`, `resume`, slash commands, and memory/skills commands.
+Each command will include usage, examples, and expected exit codes.
 
-<!-- TODO: заполняется на этапе CLI -->
+<!-- TODO: filled during the CLI stage -->

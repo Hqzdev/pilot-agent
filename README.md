@@ -1,4 +1,4 @@
-# DevAgent ⚙
+# Pilot Agent ⚙
 
 **From idea to deployed MVP — one terminal session.**
 
@@ -7,7 +7,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 [![Ruff](https://img.shields.io/badge/lint-ruff-46a2f1.svg)](https://github.com/astral-sh/ruff)
 
-DevAgent is a local CLI agent that takes a product idea through discovery,
+Pilot Agent is a local CLI agent that takes a product idea through discovery,
 planning, coding, deployment, and launch copy in one guided session. It doesn't
 consider a task done until the code actually runs through the built-in
 verification loop, and it keeps project state outside the chat in `STATE.md`.
@@ -24,10 +24,10 @@ the conversation.
 |---|---|
 | A real terminal interface | Multiline editing, slash-command autocomplete, input history, interrupt handling, and collapsed tool output. |
 | Verification loop | The agent runs what it writes, reads stderr, and fixes; a task is not complete until the check passes. |
-| A learning loop | Lessons from fix cycles, deploy skill synthesis, skill scoring, and plain markdown memory under `~/.devagent/`. |
+| A learning loop | Lessons from fix cycles, deploy skill synthesis, skill scoring, and plain markdown memory under `~/.pilot-agent/`. |
 | Provider-agnostic core | Canonical dataclass messages under the hood; provider conversion happens only at API call time. |
 | Sandboxed by default | Agent commands can execute in a per-session Docker sandbox; local backend is available when explicitly selected. |
-| Three-tier context | Tool-output truncation, LLM summarization, and externalized project state in `.devagent/STATE.md`. |
+| Three-tier context | Tool-output truncation, LLM summarization, and externalized project state in `.pilot-agent/STATE.md`. |
 
 ## Quick Install
 
@@ -58,22 +58,22 @@ uv tool install git+https://github.com/Hqzdev/pilot-agent
 After installation:
 
 ```bash
-devagent setup    # 1-minute wizard: provider, key, model, sandbox, tools
-cd your-project && devagent init && devagent run
+pilot-agent setup    # 1-minute wizard: provider, key, model, sandbox, tools
+cd your-project && pilot-agent init && pilot-agent run
 ```
 
 ## Getting Started
 
 ```bash
-devagent              # start / continue a session in the current project
-devagent setup        # full setup wizard: provider, keys, sandbox, tools
-devagent model        # choose your LLM provider and model
-devagent model <provider>:<model>
-devagent tools        # enable/configure web search, fetch, and deploy tools
-devagent backend      # choose where agent commands run: docker or local
-devagent doctor       # diagnose config, provider, tools, backend, and project state
-devagent lessons clear
-devagent update       # update to the latest version
+pilot-agent              # start / continue a session in the current project
+pilot-agent setup        # full setup wizard: provider, keys, sandbox, tools
+pilot-agent model        # choose your LLM provider and model
+pilot-agent model <provider>:<model>
+pilot-agent tools        # enable/configure web search, fetch, and deploy tools
+pilot-agent backend      # choose where agent commands run: docker or local
+pilot-agent doctor       # diagnose config, provider, tools, backend, and project state
+pilot-agent lessons clear
+pilot-agent update       # update to the latest version
 ```
 
 ## Slash Commands
@@ -90,7 +90,7 @@ devagent update       # update to the latest version
 
 ## How It Works
 
-DevAgent runs a five-phase pipeline:
+Pilot Agent runs a five-phase pipeline:
 
 1. **Discovery** asks focused product questions and writes the brief.
 2. **Planning** writes the file map, schema notes, and TODO list to `STATE.md`.
@@ -111,7 +111,7 @@ AgentLoop logs assistant message
   ↓
 ToolRegistry executes calls through the selected backend
   ↓
-full tool output → .devagent/artifacts/
+full tool output → .pilot-agent/artifacts/
 truncated result → model context
   ↓
 STATE.md / session.jsonl / lessons.md
@@ -137,7 +137,7 @@ dataclasses. Anthropic/OpenAI/OpenRouter formatting happens at the API boundary,
 which makes mid-session provider switching possible.
 
 **`STATE.md` over chat memory.** Long-running project state lives in
-`.devagent/STATE.md`, not in fragile conversational memory. The model sees it
+`.pilot-agent/STATE.md`, not in fragile conversational memory. The model sees it
 every turn and updates it after meaningful work.
 
 **Progressive skill disclosure.** The system prompt gets only the skill index.
@@ -145,7 +145,7 @@ Full skill bodies are loaded on demand with `load_skill`, keeping context small
 until a procedure is actually needed.
 
 **Inspectable markdown memory.** Lessons and learned skills are normal markdown
-files under `~/.devagent/`. Users can inspect, edit, delete, and version them
+files under `~/.pilot-agent/`. Users can inspect, edit, delete, and version them
 without a database or opaque embedding store.
 
 **Sandbox by default.** The CLI runs natively for a clean terminal experience,
@@ -156,17 +156,17 @@ local backend exists for speed and constrained environments.
 
 ```bash
 git clone https://github.com/Hqzdev/pilot-agent.git
-cd devagent
+cd pilot-agent
 ./setup-dev.sh
-./devagent --help
+./pilot-agent-dev --help
 ```
 
 Manual path:
 
 ```bash
 uv sync --all-groups --frozen
-.venv/bin/ruff check devagent tests
-.venv/bin/mypy --no-incremental --no-sqlite-cache devagent
+.venv/bin/ruff check pilot_agent tests
+.venv/bin/mypy --no-incremental --no-sqlite-cache pilot_agent
 .venv/bin/pytest
 ```
 
@@ -177,7 +177,7 @@ Use conventional commits such as `feat(cli): add backend selector`,
 
 MIT — see [LICENSE](LICENSE).
 
-Built by the DevAgent contributors:
+Built by the Pilot Agent contributors:
 [Muhammadcell](https://github.com/Muhammadcell),
 [Ha1zyy](https://github.com/Ha1zyy), and
 [abdulluda3](https://github.com/abdulluda3).

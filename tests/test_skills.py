@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from devagent.agent.types import Message, Role, ToolCall
-from devagent.skills.registry import SkillRegistry
-from devagent.tools.skill_tools import LoadSkillTool, SaveSkillTool
+from pilot_agent.agent.types import Message, Role, ToolCall
+from pilot_agent.skills.registry import SkillRegistry
+from pilot_agent.tools.skill_tools import LoadSkillTool, SaveSkillTool
 
 
 def skill_doc(name: str, source: str = "learned", triggers: str = "[python]") -> str:
@@ -88,7 +88,7 @@ def test_record_outcome_deprecates_failed_learned_skill(tmp_path: Path) -> None:
 
 
 def test_builtin_skills_exist_and_have_content() -> None:
-    builtin = Path("devagent/skills/builtin")
+    builtin = Path("pilot_agent/skills/builtin")
     names = {path.stem for path in builtin.glob("*.md")}
 
     assert names == {

@@ -1,5 +1,8 @@
 # Docker
 
-Этот документ описывает Docker-first установку, named volume `devagent-home`, сетевую модель `localhost` внутри контейнера и Vercel token flow. Здесь будут troubleshooting notes для Docker Desktop, WSL2 и ручной проверки портов.
+This document covers the Docker-first install path, the `pilot-agent-home`
+named volume, localhost behavior inside the sandbox container, and the Vercel
+token flow. It will also include troubleshooting notes for Docker Desktop,
+WSL2, and manual port checks.
 
-<!-- TODO: заполняется на этапе Docker -->
+<!-- TODO: filled during the Docker stage -->

@@ -16,7 +16,7 @@ def main() -> int:
     if missing:
         print(json.dumps({"ready": False, "missing": missing}, indent=2))
         return 0
-    with tempfile.TemporaryDirectory(prefix="devagent-live-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="pilot-agent-live-") as tmp:
         project = Path(tmp)
         write_next_app(project)
         deploy = subprocess.run(
@@ -29,7 +29,7 @@ def main() -> int:
                 "bash",
                 "-v",
                 f"{project}:/live-workspace",
-                "devagent",
+                "pilot-agent",
                 "-lc",
                 live_command(),
             ],
@@ -88,7 +88,7 @@ def write_next_app(project: Path) -> None:
         encoding="utf-8",
     )
     (project / "app" / "page.tsx").write_text(
-        "export default function Page() { return <main>Hello DevAgent</main>; }\n",
+        "export default function Page() { return <main>Hello Pilot Agent</main>; }\n",
         encoding="utf-8",
     )
 

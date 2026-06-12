@@ -5,16 +5,16 @@ Set Width 1100
 Set Height 720
 Set TypingSpeed 35ms
 
-Type "devagent version"
+Type "pilot-agent version"
 Enter
 Sleep 1s
-Type "devagent setup --provider anthropic"
+Type "pilot-agent setup --provider anthropic"
 Enter
 Sleep 1s
-Type "devagent init"
+Type "pilot-agent init"
 Enter
 Sleep 1s
-Type "devagent run"
+Type "pilot-agent run"
 Enter
 Sleep 2s
 Type "/help"

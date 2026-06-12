@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from devagent.agent.memory import DEPLOY_SYNTHESIS_PROMPT, Memory
-from devagent.agent.state import read_session_messages, write_session_record
-from devagent.agent.types import Message, Role, ToolCall, ToolResult
+from pilot_agent.agent.memory import DEPLOY_SYNTHESIS_PROMPT, Memory
+from pilot_agent.agent.state import read_session_messages, write_session_record
+from pilot_agent.agent.types import Message, Role, ToolCall, ToolResult
 
 
 def run_result(call_id: str, verdict: str, stderr_tail: str = "") -> ToolResult:

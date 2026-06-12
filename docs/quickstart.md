@@ -1,5 +1,7 @@
 # Quickstart
 
-Этот документ описывает путь от установки до первого вопроса Discovery-фазы. Здесь будут команды Docker-first установки, native uv альтернатива и типовые первые проверки.
+This document covers the path from installation to the first Discovery question.
+It will include Docker-first install commands, the native uv alternative, and
+the first checks users should run.
 
-<!-- TODO: заполняется на этапе onboarding -->
+<!-- TODO: filled during the onboarding stage -->

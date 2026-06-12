@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from devagent.agent.context import ContextManager, StaticSummaryProvider, build_system_prompt
-from devagent.agent.state import (
+from pilot_agent.agent.context import ContextManager, StaticSummaryProvider, build_system_prompt
+from pilot_agent.agent.state import (
     STATE_TEMPLATE,
     init_project_state,
     read_state,
     write_session_record,
 )
-from devagent.agent.types import Message, Role, ToolResult
+from pilot_agent.agent.types import Message, Role, ToolResult
 
 
 def tool_message(idx: int, content: str = "x" * 300) -> Message:
@@ -82,4 +82,4 @@ def test_session_message_records_round_trip(tmp_path: Path) -> None:
     write_session_record(tmp_path, msg)
     write_session_record(tmp_path, {"_type": "phase_change", "phase": "planning"})
 
-    assert "hello" in (tmp_path / ".devagent" / "session.jsonl").read_text()
+    assert "hello" in (tmp_path / ".pilot-agent" / "session.jsonl").read_text()

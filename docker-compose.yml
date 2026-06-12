@@ -1,13 +1,13 @@
 services:
-  devagent:
+  pilot-agent:
     build: .
-    image: devagent:latest
+    image: pilot-agent:latest
     stdin_open: true
     tty: true
     working_dir: /workspace
     volumes:
       - ./:/workspace
-      - devagent-home:/home/agent/.devagent
+      - pilot-agent-home:/home/agent/.pilot-agent
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -19,4 +19,4 @@ services:
     #   - "8000:8000"
 
 volumes:
-  devagent-home:
+  pilot-agent-home:

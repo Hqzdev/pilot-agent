@@ -6,14 +6,14 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from devagent.cli import app
+from pilot_agent.cli import app
 
 
 def test_doctor_json_reports_actionable_missing_key(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     runner = CliRunner()
 
@@ -24,14 +24,14 @@ def test_doctor_json_reports_actionable_missing_key(
     checks = json.loads(result.output)
     key_check = next(item for item in checks if item["name"] == "provider API key")
     assert key_check["status"] == "fail"
-    assert "devagent setup" in key_check["fix"]
+    assert "pilot-agent setup" in key_check["fix"]
 
 
 def test_doctor_json_reports_broken_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
     (home / "config.yaml").write_text("ui:\n  color: sometimes\n", encoding="utf-8")
-    monkeypatch.setenv("DEVAGENT_HOME", str(home))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(home))
     runner = CliRunner()
 
     monkeypatch.chdir(tmp_path)
@@ -48,9 +48,9 @@ def test_status_reads_phase_todo_and_session(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     project = tmp_path / "project"
-    agent_dir = project / ".devagent"
+    agent_dir = project / ".pilot-agent"
     agent_dir.mkdir(parents=True)
     (agent_dir / "STATE.md").write_text(
         "# Project\n## TODO\n- [x] done\n- [ ] next\n## Done\n",
@@ -76,9 +76,9 @@ def test_sessions_list_shows_current_session(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     project = tmp_path / "project"
-    agent_dir = project / ".devagent"
+    agent_dir = project / ".pilot-agent"
     agent_dir.mkdir(parents=True)
     (agent_dir / "session.jsonl").write_text(
         '{"_type":"phase_change","from":"discovery","to":"planning"}\n',
@@ -98,7 +98,7 @@ def test_lessons_clear_and_skills_show(tmp_path: Path, monkeypatch: pytest.Monke
     home = tmp_path / "home"
     home.mkdir()
     (home / "lessons.md").write_text("lesson", encoding="utf-8")
-    monkeypatch.setenv("DEVAGENT_HOME", str(home))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(home))
     runner = CliRunner()
 
     show_skill = runner.invoke(app, ["skills", "show", "readme-structure"])

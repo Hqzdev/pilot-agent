@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from devagent.cli import app
+from pilot_agent.cli import app
 
 
 def test_cli_help_smoke() -> None:

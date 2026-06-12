@@ -1,5 +1,7 @@
 # Memory
 
-Этот документ описывает inspectable memory в `~/.devagent/`: `lessons.md`, learned skills и связь с `run_and_check`. Здесь будут правила, какие уроки сохранять, какие пропускать и как пользователь может редактировать память вручную.
+This document covers inspectable memory under `~/.pilot-agent/`: `lessons.md`,
+learned skills, and the link to `run_and_check`. It will define which lessons
+to save, which ones to skip, and how users can edit memory manually.
 
-<!-- TODO: заполняется на этапе memory -->
+<!-- TODO: filled during the memory stage -->

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_url="${DEVAGENT_REPO_URL:-https://github.com/Hqzdev/pilot-agent.git}"
-src="${DEVAGENT_SRC:-$HOME/.devagent-src}"
-bin_dir="${DEVAGENT_BIN_DIR:-$HOME/.local/bin}"
+repo_url="${PILOT_AGENT_REPO_URL:-https://github.com/Hqzdev/pilot-agent.git}"
+src="${PILOT_AGENT_SRC:-$HOME/.pilot-agent-src}"
+bin_dir="${PILOT_AGENT_BIN_DIR:-$HOME/.local/bin}"
 mode="native"
 
 case "$(uname -s)" in
@@ -31,15 +31,15 @@ clone_or_update() {
 
 install_wrapper() {
   mkdir -p "$bin_dir"
-  cat > "$bin_dir/devagent" <<'EOF'
+  cat > "$bin_dir/pilot-agent" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-exec docker compose -f "$HOME/.devagent-src/docker-compose.yml" run --rm \
+exec docker compose -f "$HOME/.pilot-agent-src/docker-compose.yml" run --rm \
   -v "$PWD":/workspace \
   -e TERM="${TERM:-xterm-256color}" \
-  devagent "$@"
+  pilot-agent "$@"
 EOF
-  chmod +x "$bin_dir/devagent"
+  chmod +x "$bin_dir/pilot-agent"
 }
 
 install_uv_if_missing() {
@@ -55,26 +55,26 @@ if has docker && docker info >/dev/null 2>&1; then
   clone_or_update
   docker compose -f "$src/docker-compose.yml" build
   install_wrapper
-  if ! command -v devagent >/dev/null 2>&1; then
+  if ! command -v pilot-agent >/dev/null 2>&1; then
     echo "Add this to your shell rc, then restart the terminal:"
     echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
   fi
-  "$bin_dir/devagent" version || true
+  "$bin_dir/pilot-agent" version || true
 else
   install_uv_if_missing
-  if uv tool list | grep -q '^devagent '; then
-    uv tool upgrade devagent
+  if uv tool list | grep -q '^pilot-agent '; then
+    uv tool upgrade pilot-agent
   else
     uv tool install "git+$repo_url"
   fi
-  command -v devagent >/dev/null 2>&1 || {
-    echo "Add uv's tool directory to PATH, then rerun: devagent version"
+  command -v pilot-agent >/dev/null 2>&1 || {
+    echo "Add uv's tool directory to PATH, then rerun: pilot-agent version"
     echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
   }
 fi
 
-echo "✓ DevAgent установлен ($mode)"
-echo "Дальше:"
-echo "  cd <папка проекта>"
-echo "  devagent setup     # первичная настройка (1 минута)"
-echo "  devagent init && devagent run"
+echo "✓ Pilot Agent installed ($mode)"
+echo "Next:"
+echo "  cd <project-folder>"
+echo "  pilot-agent setup     # first-time setup (1 minute)"
+echo "  pilot-agent init && pilot-agent run"

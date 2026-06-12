@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from devagent.cli import app
-from devagent.config.schema import config_value, load_config, user_config_path
+from pilot_agent.cli import app
+from pilot_agent.config.schema import config_value, load_config, user_config_path
 
 
 def test_full_config_defaults_include_onboarding_sections(tmp_path: Path) -> None:
@@ -14,7 +14,7 @@ def test_full_config_defaults_include_onboarding_sections(tmp_path: Path) -> Non
 
     assert cfg.provider == "anthropic"
     assert cfg.backend == "docker"
-    assert cfg.sandbox.image == "devagent-sandbox:latest"
+    assert cfg.sandbox.image == "pilot-agent-sandbox:latest"
     assert cfg.tools.web_search.enabled is True
     assert cfg.tools.web_search.provider == "tavily"
     assert cfg.tools.web_fetch.enabled is False
@@ -32,16 +32,16 @@ def test_config_precedence_sources(
     home = tmp_path / "home"
     project = tmp_path / "project"
     home.mkdir()
-    (project / ".devagent").mkdir(parents=True)
+    (project / ".pilot-agent").mkdir(parents=True)
     (home / "config.yaml").write_text(
         "provider: openai\nmodel: gpt-5\nbudget_ratio: 0.8\n",
         encoding="utf-8",
     )
-    (project / ".devagent" / "config.yaml").write_text(
+    (project / ".pilot-agent" / "config.yaml").write_text(
         "model: project-model\nphases:\n  deploy:\n    enabled: false\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEVAGENT_MODEL", "env-model")
+    monkeypatch.setenv("PILOT_AGENT_MODEL", "env-model")
 
     cfg = load_config(provider="anthropic", home=home, project_root=project)
 
@@ -61,7 +61,7 @@ def test_config_cli_table_get_set_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     home = tmp_path / "home"
-    monkeypatch.setenv("DEVAGENT_HOME", str(home))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(home))
     runner = CliRunner()
 
     set_result = runner.invoke(app, ["config", "set", "phases.deploy.enabled", "false"])
@@ -100,7 +100,7 @@ def test_config_set_rejects_invalid_value(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     runner = CliRunner()
 
     result = runner.invoke(app, ["config", "set", "ui.color", "sometimes"])

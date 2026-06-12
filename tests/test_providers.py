@@ -5,21 +5,21 @@ from typing import Any
 
 import pytest
 
-from devagent.agent.types import Message, Role, ToolCall, ToolResult, ToolSpec
-from devagent.providers.anthropic import (
+from pilot_agent.agent.types import Message, Role, ToolCall, ToolResult, ToolSpec
+from pilot_agent.providers.anthropic import (
     AnthropicProvider,
     anthropic_messages,
     anthropic_tools,
     parse_anthropic_response,
 )
-from devagent.providers.base import Provider, from_config, register
-from devagent.providers.openai import (
+from pilot_agent.providers.base import Provider, from_config, register
+from pilot_agent.providers.openai import (
     OpenAIProvider,
     openai_messages,
     openai_tools,
     parse_openai_response,
 )
-from devagent.providers.openrouter import _MODEL_CACHE, OpenRouterProvider
+from pilot_agent.providers.openrouter import _MODEL_CACHE, OpenRouterProvider
 
 
 def test_anthropic_tool_spec_uses_input_schema() -> None:
@@ -251,9 +251,9 @@ def test_openai_complete_uses_mocked_client_and_counts_tokens(
     def unknown_model(model: str) -> FakeEncoding:
         raise KeyError(model)
 
-    monkeypatch.setattr("devagent.providers.openai.tiktoken.encoding_for_model", unknown_model)
+    monkeypatch.setattr("pilot_agent.providers.openai.tiktoken.encoding_for_model", unknown_model)
     monkeypatch.setattr(
-        "devagent.providers.openai.tiktoken.get_encoding",
+        "pilot_agent.providers.openai.tiktoken.get_encoding",
         lambda name: FakeEncoding(),
     )
 
@@ -303,7 +303,7 @@ def test_openrouter_context_window_fetch_cache_and_fallback(
         assert timeout == 5
         return ResponseOk()
 
-    monkeypatch.setattr("devagent.providers.openrouter.requests.get", fake_get)
+    monkeypatch.setattr("pilot_agent.providers.openrouter.requests.get", fake_get)
 
     assert provider.context_window == 99_999
     assert provider.context_window == 99_999
@@ -314,7 +314,7 @@ def test_openrouter_context_window_fetch_cache_and_fallback(
     def failing_get(url: str, timeout: int) -> ResponseOk:
         raise RuntimeError("offline")
 
-    monkeypatch.setattr("devagent.providers.openrouter.requests.get", failing_get)
+    monkeypatch.setattr("pilot_agent.providers.openrouter.requests.get", failing_get)
     assert OpenRouterProvider(model="missing/model", api_key="test").context_window == 128_000
 
 

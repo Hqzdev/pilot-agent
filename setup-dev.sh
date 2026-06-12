@@ -14,11 +14,11 @@ else
   echo "pre-commit not installed; skipping hook setup"
 fi
 
-cat > devagent-dev <<'EOF'
+cat > pilot-agent-dev <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-exec uv run devagent "$@"
+exec uv run pilot-agent "$@"
 EOF
-chmod +x devagent-dev
+chmod +x pilot-agent-dev
 
-echo "OK: run ./devagent-dev --help"
+echo "OK: run ./pilot-agent-dev --help"

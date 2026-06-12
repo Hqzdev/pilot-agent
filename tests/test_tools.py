@@ -8,14 +8,14 @@ from typing import Any
 
 import pytest
 
-from devagent.agent.types import ToolCall
-from devagent.tools.ask_user import AskUserTool
-from devagent.tools.base import Tool, ToolRegistry
-from devagent.tools.bash import BashTool
-from devagent.tools.file_ops import EditFileTool, ListFilesTool, ReadFileTool, WriteFileTool
-from devagent.tools.phase_tools import CompletePhaseTool
-from devagent.tools.run_check import RunAndCheckTool
-from devagent.tools.skill_tools import LoadSkillTool, SaveSkillTool
+from pilot_agent.agent.types import ToolCall
+from pilot_agent.tools.ask_user import AskUserTool
+from pilot_agent.tools.base import Tool, ToolRegistry
+from pilot_agent.tools.bash import BashTool
+from pilot_agent.tools.file_ops import EditFileTool, ListFilesTool, ReadFileTool, WriteFileTool
+from pilot_agent.tools.phase_tools import CompletePhaseTool
+from pilot_agent.tools.run_check import RunAndCheckTool
+from pilot_agent.tools.skill_tools import LoadSkillTool, SaveSkillTool
 
 
 class EchoTool(Tool):
@@ -123,7 +123,7 @@ def test_read_file_allows_home_devagent(tmp_path: Path, monkeypatch: pytest.Monk
     memory = home
     memory.mkdir(parents=True)
     (memory / "lessons.md").write_text("lesson", encoding="utf-8")
-    monkeypatch.setenv("DEVAGENT_HOME", str(home))
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(home))
     registry = ToolRegistry([ReadFileTool(tmp_path / "project")], tmp_path / "project")
 
     result = registry.execute(

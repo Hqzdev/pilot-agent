@@ -1,5 +1,7 @@
 # Configuration
 
-Этот документ описывает `config.yaml`, приоритеты CLI/env/project/user/default и правила хранения секретов. Он также фиксирует все `DEVAGENT_*` overrides и provider-specific key variables.
+This document covers `config.yaml`, CLI/env/project/user/default precedence, and
+secret storage rules. It also lists every `PILOT_AGENT_*` override and
+provider-specific key variable.
 
-<!-- TODO: заполняется на этапе config -->
+<!-- TODO: filled during the config stage -->

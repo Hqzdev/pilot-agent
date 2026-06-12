@@ -13,7 +13,7 @@ def test_install_script_uses_user_local_bin_not_usr_local() -> None:
     text = Path("install.sh").read_text(encoding="utf-8")
 
     assert "$HOME/.local/bin" in text
-    assert "/usr/local/bin/devagent" not in text
+    assert "/usr/local/bin/pilot-agent" not in text
     assert "docker compose" in text
 
 
@@ -21,10 +21,10 @@ def test_readme_documents_onboarding_commands() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 
     for snippet in [
-        "devagent setup",
-        "devagent doctor",
-        "devagent model <provider>:<model>",
-        "devagent lessons clear",
+        "pilot-agent setup",
+        "pilot-agent doctor",
+        "pilot-agent model <provider>:<model>",
+        "pilot-agent lessons clear",
         "/model",
         "/compact",
         "STATE.md",

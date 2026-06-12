@@ -1,39 +1,49 @@
 # AGENTS.md
 
-Контекст для ИИ-агентов, работающих с этим репозиторием.
+Context for AI agents working in this repository.
 
-## Команды
+## Commands
 
-- Установка dev-зависимостей: `UV_CACHE_DIR=.uv-cache uv sync --all-groups`
-- Полная проверка: `scripts/run_tests.sh`
-- Тесты: `UV_CACHE_DIR=.uv-cache uv run pytest`
-- Линт: `UV_CACHE_DIR=.uv-cache uv run ruff check devagent tests`
-- Типы: `UV_CACHE_DIR=.uv-cache uv run mypy devagent`
-- Компиляция: `UV_CACHE_DIR=.uv-cache uv run python -m compileall devagent`
-- CLI smoke: `UV_CACHE_DIR=.uv-cache uv run python -m devagent.cli --help`
+- Install dev dependencies: `UV_CACHE_DIR=.uv-cache uv sync --all-groups`
+- Full check: `scripts/run_tests.sh`
+- Tests: `UV_CACHE_DIR=.uv-cache uv run pytest`
+- Lint: `UV_CACHE_DIR=.uv-cache uv run ruff check pilot_agent tests`
+- Types: `UV_CACHE_DIR=.uv-cache uv run mypy pilot_agent`
+- Compile: `UV_CACHE_DIR=.uv-cache uv run python -m compileall pilot_agent`
+- CLI smoke: `UV_CACHE_DIR=.uv-cache uv run python -m pilot_agent.cli --help`
 
-## Инварианты
+## Invariants
 
-- История сессии хранится только в канонических dataclass-типах из `devagent/agent/types.py`.
-- Состояние проекта живёт в `.devagent/STATE.md`, а не в conversational history.
-- Полный вывод каждого tool result сохраняется в `.devagent/artifacts/` до truncation.
-- Skills раскрываются прогрессивно: в prompt идёт индекс, тело загружается через `load_skill`.
-- Секреты никогда не пишутся в `config.yaml`; только имена env-переменных.
+- Session history is stored only in canonical dataclass types from `pilot_agent/agent/types.py`.
+- Project state lives in `.pilot-agent/STATE.md`, not in conversational history.
+- Every complete tool result is written to `.pilot-agent/artifacts/` before truncation.
+- Skills are disclosed progressively: prompts get the index, full bodies load through `load_skill`.
+- Secrets are never written to `config.yaml`; only environment variable names are stored.
 
-## Планка качества
+## Quality Bar
 
-- README и install-команды должны работать у чужого человека с первой попытки.
-- Тесты должны реально гоняться через `scripts/run_tests.sh`; не добавлять декоративные заглушки.
-- Ошибки должны объяснять, что случилось и какую команду выполнить для исправления.
-- Не коммитить backup-файлы, `__pycache__`, `.DS_Store`, локальные cache/venv и временные артефакты.
-- Не оставлять документацию, которая обещает фичу без существующего кода и теста.
+- README and install commands must work for a new user on the first try.
+- Tests must actually run through `scripts/run_tests.sh`; do not add decorative stubs.
+- Errors must explain what happened and the exact command that fixes it.
+- Do not commit backup files, `__pycache__`, `.DS_Store`, local caches, virtualenvs, or temp artifacts.
+- Do not leave documentation that promises a feature without existing code and a test.
 
-## Анти-скоуп v1
+## Git Workflow
 
-Не добавлять `gateway/`, `apps/`, `web/`, `locales/`, `cron/`, `plugins/`, `acp_*`, `nix/`, `packaging/`.
+- Never commit directly to `main`. Each task starts from a fresh `main` branch named `feat|fix|docs|chore/kebab-case`.
+- Keep PRs at or below 400 changed lines. Split larger work into multiple PRs.
+- The PR title must be a conventional commit because it becomes the squashed commit on `main`.
+- Delete branches after merge; auto-delete should stay enabled in GitHub.
 
-Не добавлять embeddings, vector DB, web UI, полноэкранный TUI, subagents, scheduler, Telegram/Discord/Slack gateways или нативный Windows installer в v1.
+## Anti-Scope v1
 
-## Git
+Do not add `gateway/`, `apps/`, `web/`, `locales/`, `cron/`, `plugins/`, `acp_*`, `nix/`, or `packaging/`.
 
-Коммиты должны быть conventional commits: `chore(scope): ...`, `feat(cli): ...`, `fix(tools): ...`, `test(providers): ...`. Не писать `AI generated` и не смешивать разные темы в одном коммите.
+Do not add embeddings, vector DBs, web UI, fullscreen TUI, subagents, schedulers,
+Telegram/Discord/Slack gateways, or a native Windows installer in v1.
+
+## Commits
+
+Use conventional commits: `chore(scope): ...`, `feat(cli): ...`,
+`fix(tools): ...`, `test(providers): ...`. Do not write `AI generated`, do not
+write `admin did this`, and do not mix unrelated topics in one commit.

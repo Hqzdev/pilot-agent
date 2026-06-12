@@ -4,7 +4,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
-COPY devagent/ devagent/
+COPY pilot_agent/ pilot_agent/
 RUN touch README.md
 RUN uv sync --frozen --no-dev
 
@@ -19,6 +19,6 @@ USER agent
 WORKDIR /workspace
 COPY --from=builder --chown=agent /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
-    DEVAGENT_HOME=/home/agent/.devagent
-ENTRYPOINT ["devagent"]
+    PILOT_AGENT_HOME=/home/agent/.pilot-agent
+ENTRYPOINT ["pilot-agent"]
 CMD ["run"]
