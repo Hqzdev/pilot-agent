@@ -17,6 +17,7 @@ bin_dir="${PILOT_AGENT_BIN_DIR:-$HOME/.local/bin}"
 log="${TMPDIR:-/tmp}/pilot-agent-install-$(date +%Y%m%d%H%M%S).log"
 assume_yes=0
 verbose="${PILOT_AGENT_INSTALL_VERBOSE:-0}"
+run_setup=1
 mode="native"
 step_label="preflight"
 
@@ -24,10 +25,14 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     -y|--yes) assume_yes=1 ;;
     -v|--verbose) verbose=1 ;;
+    --no-setup) run_setup=0 ;;
     *) echo "Unknown option: $1"; exit 2 ;;
   esac
   shift
 done
+if [ "${PILOT_AGENT_INSTALL_NO_SETUP:-0}" = "1" ]; then
+  run_setup=0
+fi
 
 mkdir -p "$(dirname "$log")"
 : > "$log"
@@ -245,6 +250,39 @@ verify_path() {
   fi
 }
 
+pilot_agent_cmd() {
+  if [ -x "$bin_dir/pilot-agent" ]; then
+    printf '%s\n' "$bin_dir/pilot-agent"
+    return
+  fi
+  if command -v pilot-agent >/dev/null 2>&1; then
+    command -v pilot-agent
+    return
+  fi
+  return 1
+}
+
+run_initial_setup() {
+  if [ "$run_setup" -ne 1 ]; then
+    say "${yellow}${warn}${reset} Setup skipped. Run: pilot-agent setup"
+    return
+  fi
+  if [ ! -t 1 ] || [ ! -r /dev/tty ]; then
+    say "${yellow}${warn}${reset} Setup skipped: no interactive terminal."
+    say "Run: pilot-agent setup"
+    return
+  fi
+  local cmd
+  if ! cmd="$(pilot_agent_cmd)"; then
+    say "${yellow}${warn}${reset} Setup skipped: pilot-agent is not on PATH yet."
+    say "Run after updating PATH: pilot-agent setup"
+    return
+  fi
+  step_label="Running setup"
+  say "${accent}${arrow}${reset} starting setup wizard"
+  "$cmd" setup --reconfigure < /dev/tty
+}
+
 preflight
 confirm_plan
 
@@ -261,8 +299,8 @@ else
 fi
 
 say "${green}${ok}${reset} Pilot Agent installed (${mode})"
+run_initial_setup
 say "Next:"
 say "  cd <project-folder>"
-say "  pilot-agent setup     # first-time setup (1 minute)"
 say "  pilot-agent init && pilot-agent run"
 say "Log: $log"

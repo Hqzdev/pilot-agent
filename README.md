@@ -36,6 +36,8 @@ curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh 
 ```
 
 Prefer to inspect first? Download `install.sh`, read it, run it.
+After installing, the script starts `pilot-agent setup` automatically when an
+interactive terminal is available. Use `--no-setup` to install only.
 
 <details><summary>Windows</summary>
 
@@ -55,7 +57,7 @@ uv tool install git+https://github.com/Hqzdev/pilot-agent
 ## Getting Started
 
 ```bash
-pilot-agent setup                  # provider, key, model, optional Vercel token
+pilot-agent setup                  # rerun anytime to change provider, key, model, Vercel
 cd your-project
 pilot-agent init                   # create .pilot-agent/STATE.md
 pilot-agent doctor                 # diagnose config, credentials, tools, project

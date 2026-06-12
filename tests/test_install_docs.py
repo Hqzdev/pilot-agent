@@ -15,6 +15,8 @@ def test_install_script_uses_user_local_bin_not_usr_local() -> None:
     assert "$HOME/.local/bin" in text
     assert "/usr/local/bin/pilot-agent" not in text
     assert "docker compose" in text
+    assert "--no-setup" in text
+    assert "setup --reconfigure < /dev/tty" in text
 
 
 def test_readme_documents_onboarding_commands() -> None:
