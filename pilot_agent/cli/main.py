@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -808,6 +809,141 @@ def auth_remove(service: str) -> None:
         emit(f"✓ removed {service} from {credentials_path(default_home())}")
         return
     emit(f"{service} was not stored in {credentials_path(default_home())}")
+
+
+@app.command("delete")
+def delete_command(
+    all_: bool = typer.Option(
+        False,
+        "--all",
+        help="Remove Pilot Agent install files, user home, and current project state.",
+    ),
+    config: bool = typer.Option(False, "--config", help="Remove ~/.pilot-agent/config.yaml."),
+    credentials: bool = typer.Option(
+        False,
+        "--credentials",
+        help="Remove ~/.pilot-agent/credentials.yaml.",
+    ),
+    memory: bool = typer.Option(
+        False,
+        "--memory",
+        help="Remove lessons, learned skills, and input history.",
+    ),
+    install: bool = typer.Option(
+        False,
+        "--install",
+        help="Remove ~/.local/bin/pilot-agent and ~/.pilot-agent-src.",
+    ),
+    project: bool = typer.Option(
+        False,
+        "--project",
+        help="Remove .pilot-agent from the current project.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Do not ask for confirmation."),
+) -> None:
+    no_target = all([not all_, not config, not credentials, not memory, not install, not project])
+    if no_target:
+        emit(
+            "Choose at least one target: --all, --config, --credentials, "
+            "--memory, --install, or --project"
+        )
+        raise typer.Exit(1)
+    targets = _delete_targets(
+        all_=all_,
+        config=config,
+        credentials=credentials,
+        memory=memory,
+        install=install,
+        project=project,
+    )
+    table = simple_table("target", "path", "state")
+    for label, path in targets:
+        table.add_row(label, str(path), "exists" if path.exists() else "missing")
+    emit(table)
+    emit("Docker images and volumes are not removed. Project code changes are not reverted.")
+    if dry_run:
+        return
+    existing = [(label, path) for label, path in targets if path.exists()]
+    if not existing:
+        emit("nothing to delete")
+        return
+    if not yes:
+        if not _interactive():
+            emit("Refusing to delete without confirmation in non-interactive mode. Add --yes.")
+            raise typer.Exit(1)
+        if not typer.confirm("Delete these Pilot Agent files?", default=False):
+            raise typer.Exit(1)
+    for label, path in existing:
+        _remove_known_path(path)
+        emit(f"removed {label}: {path}")
+
+
+def _delete_targets(
+    *,
+    all_: bool,
+    config: bool,
+    credentials: bool,
+    memory: bool,
+    install: bool,
+    project: bool,
+) -> list[tuple[str, Path]]:
+    home = default_home()
+    targets: list[tuple[str, Path]] = []
+    if all_:
+        install = True
+        project = True
+        targets.append(("home", home))
+    else:
+        if config:
+            targets.append(("config", user_config_path(home)))
+        if credentials:
+            targets.append(("credentials", credentials_path(home)))
+        if memory:
+            targets.extend(
+                [
+                    ("lessons", home / "lessons.md"),
+                    ("skills", home / "skills"),
+                    ("input history", home / "input_history"),
+                ]
+            )
+    if install:
+        source = Path(os.environ.get("PILOT_AGENT_SRC", "~/.pilot-agent-src")).expanduser()
+        bin_dir = Path(os.environ.get("PILOT_AGENT_BIN_DIR", "~/.local/bin")).expanduser()
+        targets.extend(
+            [
+                ("wrapper", bin_dir / "pilot-agent"),
+                ("source checkout", source),
+            ]
+        )
+    if project:
+        targets.append(("project state", Path(".").resolve() / ".pilot-agent"))
+    return _dedupe_targets(targets)
+
+
+def _dedupe_targets(targets: list[tuple[str, Path]]) -> list[tuple[str, Path]]:
+    seen: set[Path] = set()
+    unique: list[tuple[str, Path]] = []
+    for label, path in targets:
+        resolved = path.expanduser().resolve(strict=False)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append((label, path.expanduser()))
+    return unique
+
+
+def _remove_known_path(path: Path) -> None:
+    resolved = path.expanduser().resolve(strict=False)
+    forbidden = {Path.home().resolve(), Path("/")}
+    if resolved in forbidden:
+        raise RuntimeError(f"refusing to delete unsafe path: {resolved}")
+    if not resolved.exists() and not resolved.is_symlink():
+        return
+    if resolved.is_dir() and not resolved.is_symlink():
+        shutil.rmtree(resolved)
+        return
+    resolved.unlink()
 
 
 @sandbox_app.command("build")

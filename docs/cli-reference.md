@@ -16,6 +16,15 @@ alias.
 | `pilot-agent doctor [--json]` | Diagnose environment, config, provider, tools, memory, project. |
 | `pilot-agent version` | Print version, commit, Python, platform. |
 | `pilot-agent update` | Update docker or native install. |
+| `pilot-agent delete --all` | Remove Pilot Agent install files, user home, and current project state. |
+| `pilot-agent delete --config` | Remove only `~/.pilot-agent/config.yaml`. |
+| `pilot-agent delete --credentials` | Remove only stored secrets. |
+| `pilot-agent delete --memory` | Remove lessons, learned skills, and input history. |
+| `pilot-agent delete --install` | Remove wrapper and `~/.pilot-agent-src`. |
+| `pilot-agent delete --project` | Remove `.pilot-agent` from the current project. |
+
+`pilot-agent delete` never removes Docker images or Docker volumes, and it does
+not revert code files the agent edited.
 
 ## Models
 

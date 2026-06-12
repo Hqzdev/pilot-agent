@@ -116,6 +116,38 @@ def test_auth_status_masks_and_remove_deletes_storage(
     assert get_credential("brave", home) is None
 
 
+def test_delete_all_removes_pilot_agent_files_without_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    source = tmp_path / "source"
+    bin_dir = tmp_path / "bin"
+    project = tmp_path / "project"
+    home.mkdir()
+    source.mkdir()
+    bin_dir.mkdir()
+    project.mkdir()
+    (home / "config.yaml").write_text("provider: anthropic\n", encoding="utf-8")
+    (home / "credentials.yaml").write_text("anthropic:\n  api_key: secret\n", encoding="utf-8")
+    (bin_dir / "pilot-agent").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    (project / ".pilot-agent").mkdir()
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(home))
+    monkeypatch.setenv("PILOT_AGENT_SRC", str(source))
+    monkeypatch.setenv("PILOT_AGENT_BIN_DIR", str(bin_dir))
+    monkeypatch.chdir(project)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["delete", "--all", "--yes"])
+
+    assert result.exit_code == 0
+    assert "Docker images and volumes are not removed" in result.output
+    assert not home.exists()
+    assert not source.exists()
+    assert not (bin_dir / "pilot-agent").exists()
+    assert not (project / ".pilot-agent").exists()
+
+
 def test_model_direct_switch_and_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PILOT_AGENT_HOME", str(tmp_path / "home"))
     runner = CliRunner()

@@ -76,6 +76,8 @@ pilot-agent status                 # phase, TODO progress, turns, token count
 | Health | `pilot-agent doctor [--json]` | Run environment, config, provider, tool, memory, and project checks. |
 | Health | `pilot-agent update` | Update docker or native install. |
 | Health | `pilot-agent version` | Version, commit, Python, platform. |
+| Cleanup | `pilot-agent delete --all` | Remove Pilot Agent files and current project state; Docker is untouched. |
+| Cleanup | `pilot-agent delete --config --credentials` | Remove selected local state. |
 | Model | `pilot-agent model` | Interactive provider/model selection in a TTY. |
 | Model | `pilot-agent model <provider>:<model>` | Switch directly, for example `openrouter:qwen/qwen3-coder`. |
 | Model | `pilot-agent model --list` | List models for the current provider. |
