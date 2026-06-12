@@ -1,55 +1,50 @@
 # Pilot Agent
 
-![Pilot Agent banner](public/banner.png)
+CLI agent: from idea to deployed MVP in one guided terminal session.
 
-**From idea to deployed MVP — one terminal session.**
+![Pilot Agent banner](public/banner.png)
 
 [![CI](https://github.com/Hqzdev/pilot-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Hqzdev/pilot-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 [![Ruff](https://img.shields.io/badge/lint-ruff-46a2f1.svg)](https://github.com/astral-sh/ruff)
 
-Pilot Agent is a local CLI agent that takes a product idea through discovery,
-planning, coding, deployment, and launch copy in one guided session. It doesn't
-consider a task done until the code actually runs through the built-in
-verification loop, and it keeps project state outside the chat in `STATE.md`.
-Lessons and learned skills persist across projects as plain markdown you can
-read and edit.
+Pilot Agent runs discovery, planning, coding, acceptance, deployment, and launch
+copy in one local CLI. It keeps project state in `.pilot-agent/STATE.md`,
+writes complete tool outputs to `.pilot-agent/artifacts/`, and does not mark
+work complete until verification has run.
 
-Use Anthropic, OpenAI, or OpenRouter. The core history format is provider
-agnostic, so `/model` can switch providers mid-session without throwing away
-the conversation.
+`pilot-agent` is the CLI command.
 
 ## Capabilities
 
 | Feature | Description |
 |---|---|
-| A real terminal interface | Multiline editing, slash-command autocomplete, input history, interrupt handling, and collapsed tool output. |
-| Verification loop | The agent runs what it writes, reads stderr, and fixes; a task is not complete until the check passes. |
-| A learning loop | Lessons from fix cycles, deploy skill synthesis, skill scoring, and plain markdown memory under `~/.pilot-agent/`. |
-| Provider-agnostic core | Canonical dataclass messages under the hood; provider conversion happens only at API call time. |
-| Sandboxed by default | Agent commands can execute in a per-session Docker sandbox; local backend is available when explicitly selected. |
-| Three-tier context | Tool-output truncation, LLM summarization, and externalized project state in `.pilot-agent/STATE.md`. |
+| Provider-agnostic | Switch models mid-session with `/model` while preserving canonical history. |
+| Three-tier context | Truncation, summarization, and externalized `STATE.md` keep long sessions usable. |
+| Self-improving | Lessons and learned skills are stored as inspectable markdown. |
+| Sandboxed | Agent-owned shell commands can run in Docker instead of directly on your machine. |
+| Verification loop | The agent runs checks, reads failures, and keeps fixing until acceptance passes. |
+| Human setup | `setup` stores keys in `~/.pilot-agent/credentials.yaml`; env vars are optional overrides. |
 
 ## Quick Install
 
-### Linux, macOS, WSL2
+Linux, macOS, and WSL2:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash
 ```
 
-The installer detects Docker and prepares the sandboxed backend. No Docker? It
-falls back to a native install via `uv` and tells you before running commands
-locally.
+Prefer to inspect first? Download `install.sh`, read it, run it.
 
-<details><summary>Windows (native)</summary>
+<details><summary>Windows</summary>
 
-Native Windows is planned for v1.1. WSL2 works today with the command above.
+Native Windows support is planned after v1. Use WSL2 today and run the Linux
+command above inside the WSL shell.
 
 </details>
 
-<details><summary>Manual install (uv)</summary>
+<details><summary>Manual uv install</summary>
 
 ```bash
 uv tool install git+https://github.com/Hqzdev/pilot-agent
@@ -57,48 +52,137 @@ uv tool install git+https://github.com/Hqzdev/pilot-agent
 
 </details>
 
-After installation:
-
-```bash
-pilot-agent setup    # 1-minute wizard: provider, key, model, sandbox, tools
-cd your-project && pilot-agent init && pilot-agent run
-```
-
 ## Getting Started
 
 ```bash
-pilot-agent              # start / continue a session in the current project
-pilot-agent setup        # full setup wizard: provider, keys, sandbox, tools
-pilot-agent model        # choose your LLM provider and model
-pilot-agent model <provider>:<model>
-pilot-agent tools        # enable/configure web search, fetch, and deploy tools
-pilot-agent backend      # choose where agent commands run: docker or local
-pilot-agent doctor       # diagnose config, provider, tools, backend, and project state
-pilot-agent lessons clear
-pilot-agent update       # update to the latest version
+pilot-agent setup                  # provider, key, model, optional Vercel token
+cd your-project
+pilot-agent init                   # create .pilot-agent/STATE.md
+pilot-agent doctor                 # diagnose config, credentials, tools, project
+pilot-agent run                    # start or continue the pipeline
+pilot-agent status                 # phase, TODO progress, turns, token count
+```
+
+## CLI Reference
+
+| Area | Command | Purpose |
+|---|---|---|
+| Setup | `pilot-agent setup` | First-run wizard. |
+| Setup | `pilot-agent setup --provider anthropic` | Skip provider selection. |
+| Setup | `pilot-agent setup --reconfigure` | Re-run wizard using current values as defaults. |
+| Auth | `pilot-agent auth set <provider>` | Prompt for and store a key in `credentials.yaml`. |
+| Auth | `pilot-agent auth status` | Show configured services, source, and masked keys. |
+| Auth | `pilot-agent auth remove <provider>` | Remove a stored key. |
+| Health | `pilot-agent doctor [--json]` | Run environment, config, provider, tool, memory, and project checks. |
+| Health | `pilot-agent update` | Update docker or native install. |
+| Health | `pilot-agent version` | Version, commit, Python, platform. |
+| Model | `pilot-agent model` | Interactive provider/model selection in a TTY. |
+| Model | `pilot-agent model <provider>:<model>` | Switch directly, for example `openrouter:qwen/qwen3-coder`. |
+| Model | `pilot-agent model --list` | List models for the current provider. |
+| Config | `pilot-agent config` | Show effective config with source per key. |
+| Config | `pilot-agent config set <key> <value>` | Edit with dot notation and validation. |
+| Config | `pilot-agent config get <key>` | Print one value. |
+| Config | `pilot-agent config edit` | Open the user config in `$EDITOR`. |
+| Config | `pilot-agent config path` | Print the user config path. |
+| Work | `pilot-agent init [path]` | Initialize project state. |
+| Work | `pilot-agent run` | Start or continue the pipeline. |
+| Work | `pilot-agent resume` | Resume from `session.jsonl`. |
+| Work | `pilot-agent status` | Show phase, progress, turns, and tokens. |
+| Memory | `pilot-agent skills list` | Show skills, source, score, deprecated status. |
+| Memory | `pilot-agent skills show <name>` | Print a skill body. |
+| Memory | `pilot-agent skills new` | Edit, validate, and save a learned skill. |
+| Memory | `pilot-agent lessons` | Print `lessons.md`. |
+| Memory | `pilot-agent lessons clear` | Clear lessons after confirmation. |
+| Memory | `pilot-agent sessions list` | Show the current project session summary. |
+
+Global flags work with any command:
+
+```bash
+pilot-agent --provider openrouter --model qwen/qwen3-coder run
+pilot-agent --config ./pilot-agent.yaml config
+pilot-agent --verbose doctor
+pilot-agent --no-color doctor
 ```
 
 ## Slash Commands
 
-| Action | Command |
+| Command | Purpose |
 |---|---|
-| Change model mid-session | `/model [provider:model]` |
-| Skip to next phase | `/skip` |
-| Compress context / check usage | `/compact`, `/usage` |
-| Show project state | `/state` |
-| Browse skills | `/skills` |
-| Undo last turn | `/undo` |
-| Interrupt current work | `Ctrl+C` or type a new instruction |
+| `/model <provider>:<model>` | Switch provider/model without losing session history. |
+| `/skip` | Force the next phase. |
+| `/compact` | Force context summarization. |
+| `/usage` | Show token usage for the current session. |
+| `/state` | Show `.pilot-agent/STATE.md`. |
+| `/skills` | Show skills available in the current phase. |
+| `/undo` | Remove the last assistant/tool pair from history; file changes are not reverted. |
+| `/help` | List slash commands. |
+| `/quit` | Save and exit. |
 
-## How It Works
+## Configuration
 
-Pilot Agent runs a five-phase pipeline:
+User config lives at `~/.pilot-agent/config.yaml`. Project overrides live at
+`<project>/.pilot-agent/config.yaml`. Secrets never go in config.
 
-1. **Discovery** asks focused product questions and writes the brief.
-2. **Planning** writes the file map, schema notes, and TODO list to `STATE.md`.
-3. **Coding** takes one TODO at a time, edits files, and runs verification.
-4. **Deploy** uses the Vercel skill and checks the production URL.
-5. **Marketing** generates README structure, Reddit launch copy, and landing copy.
+```yaml
+provider: anthropic
+model: claude-sonnet-4-6
+base_url: null
+summarizer_model: null
+budget_ratio: 0.7
+max_turns: 200
+tool_timeout_s: 120
+phases:
+  deploy:
+    enabled: true
+  marketing:
+    enabled: true
+ui:
+  color: auto
+  show_token_counter: true
+```
+
+Config precedence, highest first:
+
+| Level | Example |
+|---|---|
+| CLI flags | `--provider openrouter --model qwen/qwen3-coder` |
+| Env | `PILOT_AGENT_PROVIDER`, `PILOT_AGENT_MODEL`, `PILOT_AGENT_BUDGET_RATIO` |
+| Project | `.pilot-agent/config.yaml` |
+| User | `~/.pilot-agent/config.yaml` |
+| Defaults | `pilot_agent/config/defaults.yaml` |
+
+Secret precedence is separate:
+
+| Service | Env override | Stored field |
+|---|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` | `anthropic.api_key` |
+| OpenAI | `OPENAI_API_KEY` | `openai.api_key` |
+| OpenRouter | `OPENROUTER_API_KEY` | `openrouter.api_key` |
+| Vercel | `VERCEL_TOKEN` | `vercel.token` |
+
+Stored secrets live in `~/.pilot-agent/credentials.yaml` with mode `0600`.
+
+## Design Decisions
+
+**Canonical message format.** Session history is stored as internal dataclasses.
+Anthropic, OpenAI, and OpenRouter formatting happens only at the provider
+boundary, so mid-session provider switching is practical.
+
+**`STATE.md` over chat memory.** Project state lives in `.pilot-agent/STATE.md`.
+The model sees it every turn, and long-lived state is not hidden in chat
+history.
+
+**Progressive skill disclosure.** Prompts receive a skill index. Full skill
+bodies are loaded only through `load_skill`, keeping context focused.
+
+**Inspectable memory.** Lessons and learned skills are markdown under
+`~/.pilot-agent/`, not an opaque vector store.
+
+**Docker sandbox.** The CLI runs natively, while agent-owned shell commands can
+run in a Docker sandbox. A local backend remains available for constrained
+environments.
+
+## Architecture
 
 ```text
 user input
@@ -111,7 +195,7 @@ Provider.complete(system, canonical messages, tool specs)
   ↓
 AgentLoop logs assistant message
   ↓
-ToolRegistry executes calls through the selected backend
+ToolRegistry executes calls through selected backend
   ↓
 full tool output → .pilot-agent/artifacts/
 truncated result → model context
@@ -123,36 +207,14 @@ STATE.md / session.jsonl / lessons.md
 
 | Section | What's Covered |
 |---|---|
-| [Quickstart](docs/quickstart.md) | Setup, first project, first run. |
-| [Configuration](docs/configuration.md) | Config precedence, env variables, credentials, recommendations. |
-| [CLI Reference](docs/cli-reference.md) | Commands, slash commands, setup, model, tools, backend. |
-| [Skills System](docs/skills.md) | Builtin skills, learned skills, scoring, progressive disclosure. |
-| [Memory](docs/memory.md) | Lessons, skill synthesis, markdown memory files. |
-| [Architecture](docs/architecture.md) | Canonical messages, context manager, loop, providers. |
-| [Docker & Sandbox](docs/docker.md) | Native CLI plus Docker execution backend. |
+| [Quickstart](docs/quickstart.md) | Install, setup, first project, first run. |
+| [Configuration](docs/configuration.md) | Config precedence, env vars, credentials. |
+| [CLI Reference](docs/cli-reference.md) | Commands, slash commands, exit behavior. |
+| [Skills System](docs/skills.md) | Builtin and learned skills. |
+| [Memory](docs/memory.md) | Lessons and markdown memory. |
+| [Architecture](docs/architecture.md) | Loop, providers, context, tools. |
+| [Docker & Sandbox](docs/docker.md) | Docker install and sandbox behavior. |
 | [Contributing](CONTRIBUTING.md) | Development setup and PR conventions. |
-
-## Design Decisions
-
-**Canonical message format.** Session history is stored only as internal
-dataclasses. Anthropic/OpenAI/OpenRouter formatting happens at the API boundary,
-which makes mid-session provider switching possible.
-
-**`STATE.md` over chat memory.** Long-running project state lives in
-`.pilot-agent/STATE.md`, not in fragile conversational memory. The model sees it
-every turn and updates it after meaningful work.
-
-**Progressive skill disclosure.** The system prompt gets only the skill index.
-Full skill bodies are loaded on demand with `load_skill`, keeping context small
-until a procedure is actually needed.
-
-**Inspectable markdown memory.** Lessons and learned skills are normal markdown
-files under `~/.pilot-agent/`. Users can inspect, edit, delete, and version them
-without a database or opaque embedding store.
-
-**Sandbox by default.** The CLI runs natively for a clean terminal experience,
-while agent-owned shell commands can run in a Docker sandbox container. The
-local backend exists for speed and constrained environments.
 
 ## Contributing
 
@@ -160,26 +222,19 @@ local backend exists for speed and constrained environments.
 git clone https://github.com/Hqzdev/pilot-agent.git
 cd pilot-agent
 ./setup-dev.sh
-./pilot-agent-dev --help
+./pilot-agent --help
 ```
 
 Manual path:
 
 ```bash
 uv sync --all-groups --frozen
-.venv/bin/ruff check pilot_agent tests
-.venv/bin/mypy --no-incremental --no-sqlite-cache pilot_agent
-.venv/bin/pytest
+scripts/run_tests.sh
 ```
 
-Use conventional commits such as `feat(cli): add backend selector`,
-`test(tools): cover web fetch ssrf guard`, or `docs(readme): refresh setup`.
+Use conventional commits such as `feat(cli): add auth status`,
+`fix(config): resolve credentials from home`, or `docs(readme): refresh setup`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-Built by the Pilot Agent contributors:
-[Muhammadcell](https://github.com/Muhammadcell),
-[Ha1zyy](https://github.com/Ha1zyy), and
-[abdulluda3](https://github.com/abdulluda3).
+MIT, see [LICENSE](LICENSE).

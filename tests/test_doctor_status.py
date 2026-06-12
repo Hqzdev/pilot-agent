@@ -24,7 +24,7 @@ def test_doctor_json_reports_actionable_missing_key(
     checks = json.loads(result.output)
     key_check = next(item for item in checks if item["name"] == "provider API key")
     assert key_check["status"] == "fail"
-    assert "pilot-agent setup" in key_check["fix"]
+    assert "pilot-agent auth set anthropic" in key_check["fix"]
 
 
 def test_doctor_json_reports_broken_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

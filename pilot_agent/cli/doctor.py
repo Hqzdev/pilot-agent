@@ -14,8 +14,13 @@ from typing import Literal
 
 from pilot_agent.agent.state import session_path, state_path
 from pilot_agent.backends import backend_from_config
-from pilot_agent.cli.auth import STATIC_MODELS
-from pilot_agent.config.credentials import get_credential
+from pilot_agent.cli.auth import STATIC_MODELS, validate_provider_key
+from pilot_agent.config.credentials import (
+    credentials_path,
+    credentials_permissions,
+    get_credential,
+    resolve_credential,
+)
 from pilot_agent.config.schema import RECOMMENDED, PilotAgentConfig, default_home, load_config
 from pilot_agent.providers.base import _PROVIDER_MODULES
 from pilot_agent.skills.registry import SkillRegistry
@@ -47,7 +52,10 @@ def run_doctor_checks(
         lambda: check_config(root, agent_home),
         lambda: check_provider_registered(root, agent_home),
         lambda: check_api_key(root, agent_home),
+        lambda: check_credentials_file_permissions(agent_home),
+        lambda: check_provider_live_api(root, agent_home),
         lambda: check_model(root, agent_home),
+        lambda: check_context_window(root, agent_home),
         lambda: check_backend(root, agent_home),
         lambda: check_recommendations(root, agent_home),
         check_node,
@@ -157,16 +165,61 @@ def check_api_key(project_root: Path, home: Path) -> CheckResult:
     cfg = _safe_config(project_root, home)
     if cfg is None:
         return CheckResult("fail", "provider API key", "config invalid", "Run: pilot-agent setup")
-    try:
-        cfg.resolve_key()
-    except RuntimeError as exc:
+    resolved = resolve_credential(cfg.provider, home, env_name=cfg.api_key_env)
+    if not resolved.value:
         return CheckResult(
             "fail",
             "provider API key",
-            str(exc),
-            f"Run: pilot-agent setup or export {cfg.api_key_env}=<api-key>",
+            f"not found for {cfg.provider}",
+            f"Run: pilot-agent auth set {cfg.provider}",
         )
-    return CheckResult("pass", "provider API key", f"found ${cfg.api_key_env}")
+    return CheckResult("pass", "provider API key", f"{resolved.source} ({resolved.env_name})")
+
+
+def check_credentials_file_permissions(home: Path) -> CheckResult:
+    ok, mode = credentials_permissions(home)
+    if ok:
+        details = "not created yet" if mode is None else f"mode {mode}"
+        return CheckResult("pass", "credentials.yaml permissions", details)
+    path = credentials_path(home)
+    return CheckResult(
+        "warn",
+        "credentials.yaml permissions",
+        f"mode {mode}; expected 0o600",
+        f"Run: chmod 600 {path}",
+    )
+
+
+def check_provider_live_api(project_root: Path, home: Path) -> CheckResult:
+    cfg = _safe_config(project_root, home)
+    if cfg is None:
+        return CheckResult("fail", "provider live API", "config invalid", "Run: pilot-agent setup")
+    resolved = resolve_credential(cfg.provider, home, env_name=cfg.api_key_env)
+    if not resolved.value:
+        return CheckResult(
+            "warn",
+            "provider live API",
+            "skipped; provider key missing",
+            f"Run: pilot-agent auth set {cfg.provider}",
+        )
+    result = validate_provider_key(
+        cfg.provider,
+        resolved.value,
+        base_url=cfg.base_url,
+        model=cfg.model,
+        timeout_s=5,
+    )
+    latency = f" ({result.latency_ms}ms)" if result.latency_ms is not None else ""
+    if result.status == "pass":
+        return CheckResult("pass", "provider live API", result.details + latency)
+    if result.status == "fail":
+        return CheckResult(
+            "fail",
+            "provider live API",
+            result.details + latency,
+            f"Run: pilot-agent auth set {cfg.provider}",
+        )
+    return CheckResult("warn", "provider live API", result.details + latency)
 
 
 def check_model(project_root: Path, home: Path) -> CheckResult:
@@ -177,6 +230,25 @@ def check_model(project_root: Path, home: Path) -> CheckResult:
     if cfg.model in names:
         return CheckResult("pass", "model exists", cfg.model)
     return CheckResult("warn", "model exists", f"{cfg.model} not in local catalog")
+
+
+def check_context_window(project_root: Path, home: Path) -> CheckResult:
+    cfg = _safe_config(project_root, home)
+    if cfg is None:
+        return CheckResult(
+            "fail",
+            "context_window known",
+            "config invalid",
+            "Run: pilot-agent setup",
+        )
+    for item in STATIC_MODELS.get(cfg.provider, []):
+        if item.name == cfg.model:
+            return CheckResult("pass", "context_window known", str(item.context_window))
+    return CheckResult(
+        "warn",
+        "context_window known",
+        f"{cfg.model} unknown; provider default will be used",
+    )
 
 
 def check_backend(project_root: Path, home: Path) -> CheckResult:
@@ -238,11 +310,13 @@ def check_vercel_token(project_root: Path, home: Path) -> CheckResult:
         env_name = cfg.phases.deploy.vercel_token_env
     if env_name in os.environ:
         return CheckResult("pass", "VERCEL_TOKEN set", f"found ${env_name}")
+    if get_credential("vercel", home, env_name=env_name):
+        return CheckResult("pass", "VERCEL_TOKEN set", "credentials")
     return CheckResult(
         "warn",
         "VERCEL_TOKEN set",
         f"${env_name} not set",
-        f"Run: export {env_name}=...",
+        "Run: pilot-agent auth set vercel",
     )
 
 

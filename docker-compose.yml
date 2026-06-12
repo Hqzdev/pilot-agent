@@ -9,7 +9,8 @@ services:
       - ./:/workspace
       - pilot-agent-home:/home/agent/.pilot-agent
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - PILOT_AGENT_HOME=/home/agent/.pilot-agent
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - VERCEL_TOKEN=${VERCEL_TOKEN:-}

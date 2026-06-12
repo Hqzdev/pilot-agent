@@ -320,5 +320,6 @@ def test_cli_run_missing_api_key_is_clear(monkeypatch: Any) -> None:
     result = runner.invoke(app, ["run"])
 
     assert result.exit_code == 1
-    assert "Missing API key. Set ANTHROPIC_API_KEY" in result.output
+    assert "API key not found for anthropic" in result.output
+    assert "pilot-agent auth set anthropic" in result.output
     assert "Traceback" not in result.output

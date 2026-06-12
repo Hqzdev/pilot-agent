@@ -29,7 +29,7 @@ from pilot_agent.agent.state import (
 )
 from pilot_agent.agent.types import Message, Role
 from pilot_agent.backends import ExecutionBackend, backend_from_config
-from pilot_agent.cli.auth import list_models, provider_key_env
+from pilot_agent.cli.auth import PROVIDERS, list_models, provider_key_env, validate_provider_key
 from pilot_agent.cli.doctor import checks_to_json, has_failures, run_doctor_checks
 from pilot_agent.cli.setup_wizard import run_setup_wizard
 from pilot_agent.cli.ui import UI
@@ -37,8 +37,13 @@ from pilot_agent.cli.ui.banner import BannerState, render_banner
 from pilot_agent.cli.ui.components import create_console, simple_table
 from pilot_agent.cli.ui.input import PilotAgentInput
 from pilot_agent.config.credentials import (
+    credential_services,
+    credentials_permissions,
+    credentials_path,
     get_credential,
     mask_secret,
+    remove_credential,
+    resolve_credential,
     service_env_var,
     set_credential,
 )
@@ -139,7 +144,12 @@ def render_config(cfg: PilotAgentConfig) -> None:
         value = flat[key]
         display = json.dumps(value) if isinstance(value, bool | int | float) else str(value)
         table.add_row(key, display, cfg.sources.get(key, "defaults"))
-    table.add_row("api_key_present", str(bool(os.environ.get(cfg.api_key_env))).lower(), "env")
+    resolved = resolve_credential(cfg.provider, default_home(), env_name=cfg.api_key_env)
+    table.add_row(
+        "api_key_present",
+        str(bool(resolved.value)).lower(),
+        resolved.source,
+    )
     emit(table)
 
 
@@ -419,10 +429,25 @@ def model_command(
     list_only: bool = typer.Option(False, "--list"),
 ) -> None:
     cfg = load_config_or_exit()
-    if list_only or target is None:
+    if list_only:
         render_model_table(cfg.provider)
-        if target is None and not list_only:
-            emit("Switch with: pilot-agent model <provider>:<model>")
+        return
+    if target is None:
+        if _interactive():
+            provider_name = _choose_model_provider(cfg)
+            model_name = _choose_model(provider_name)
+            update_config_values(
+                _config_write_path(),
+                {
+                    "provider": provider_name,
+                    "model": model_name,
+                    "api_key_env": provider_key_env(provider_name),
+                },
+            )
+            emit(f"✓ {provider_name}:{model_name}")
+            return
+        render_model_table(cfg.provider)
+        emit("Switch with: pilot-agent model <provider>:<model>")
         return
     if ":" in target:
         provider_name, model_name = target.split(":", 1)
@@ -445,16 +470,60 @@ def model_command(
 
 
 def render_model_table(provider_name: str) -> None:
-    api_key = os.environ.get(provider_key_env(provider_name))
-    table = simple_table("provider", "model", "context", "tools")
+    api_key = get_credential(
+        provider_name,
+        default_home(),
+        env_name=provider_key_env(provider_name),
+    )
+    table = simple_table("provider", "model", "context", "tools", "price/Mtok")
     for model in list_models(provider_name, api_key=api_key):
+        price = "-"
+        if model.input_price is not None and model.output_price is not None:
+            price = f"${model.input_price:g}/${model.output_price:g}"
         table.add_row(
             model.provider,
             model.name,
             str(model.context_window),
             str(model.supports_tools).lower(),
+            price,
         )
     emit(table)
+
+
+def _choose_model_provider(cfg: PilotAgentConfig) -> str:
+    prompt = PilotAgentInput(history_path=default_home() / "input_history")
+    default = {name: idx for idx, name in enumerate(PROVIDERS, start=1)}.get(cfg.provider, 1)
+    lines = []
+    for idx, provider_name in enumerate(PROVIDERS, start=1):
+        resolved = resolve_credential(
+            provider_name,
+            default_home(),
+            env_name=provider_key_env(provider_name),
+        )
+        status = "✓" if resolved.value else "✗ no key"
+        lines.append(f"{idx}. {provider_name} ({status})")
+    choice = prompt.ask_int(
+        "Choose provider: " + "  ".join(lines),
+        default=default,
+        choices=["1", "2", "3"],
+    )
+    return PROVIDERS[choice - 1]
+
+
+def _choose_model(provider_name: str) -> str:
+    prompt = PilotAgentInput(history_path=default_home() / "input_history")
+    api_key = get_credential(
+        provider_name,
+        default_home(),
+        env_name=provider_key_env(provider_name),
+    )
+    models = list_models(provider_name, api_key=api_key)
+    choices = [str(idx) for idx in range(1, min(len(models), 20) + 1)]
+    rendered = "  ".join(
+        f"{idx}. {model.name}" for idx, model in enumerate(models[:20], start=1)
+    )
+    choice = prompt.ask_int(f"Choose model: {rendered}", default=1, choices=choices)
+    return models[choice - 1].name
 
 
 @app.command("backend")
@@ -535,7 +604,7 @@ def render_tools_table(cfg: PilotAgentConfig) -> None:
         "✓ enabled" if cfg.tools.web_fetch.enabled else "✗ disabled",
         "SSRF checks",
     )
-    vercel_key = get_credential("vercel", home)
+    vercel_key = get_credential("vercel", home, env_name=cfg.phases.deploy.vercel_token_env)
     deploy_state = (
         "✓ enabled" if cfg.tools.deploy.enabled or cfg.phases.deploy.enabled else "✗ disabled"
     )
@@ -552,14 +621,14 @@ def settings() -> None:
     cfg = load_config_or_exit()
     home = default_home()
     table = simple_table("section", "setting", "value", "source")
-    key = get_credential(cfg.provider, home) or os.environ.get(cfg.api_key_env)
+    resolved = resolve_credential(cfg.provider, home, env_name=cfg.api_key_env)
     table.add_row(
         "provider",
         "model",
         f"{cfg.provider}:{cfg.model}",
         cfg.sources.get("model", "defaults"),
     )
-    table.add_row("provider", "api key", mask_secret(key), "credentials/env")
+    table.add_row("provider", "api key", mask_secret(resolved.value), resolved.source)
     table.add_row(
         "execution",
         "backend",
@@ -706,8 +775,39 @@ def auth_set(service: str, value: str | None = typer.Argument(None)) -> None:
     if not secret:
         emit(f"skipped {service}; no key stored")
         raise typer.Exit(1)
+    if service in PROVIDERS:
+        result = validate_provider_key(service, secret, timeout_s=5)
+        if result.status == "fail":
+            emit(f"Error: API rejected {service} key: {result.details}")
+            raise typer.Exit(1)
+        if result.status == "warn":
+            emit(f"Warning: {result.details}")
     path = set_credential(service, secret, home)
     emit(f"✓ stored {service} credential in {path}")
+
+
+@auth_app.command("status")
+def auth_status() -> None:
+    home = default_home()
+    services = sorted({*PROVIDERS, "vercel", *credential_services(home)})
+    table = simple_table("service", "source", "credential", "env")
+    for service in services:
+        env_name = service_env_var(service)
+        resolved = resolve_credential(service, home, env_name=env_name)
+        table.add_row(service, resolved.source, mask_secret(resolved.value), env_name)
+    emit(table)
+    ok, mode = credentials_permissions(home)
+    if not ok:
+        path = credentials_path(home)
+        emit(f"Warning: {path} permissions are {mode}. Run: chmod 600 {path}")
+
+
+@auth_app.command("remove")
+def auth_remove(service: str) -> None:
+    if remove_credential(service, default_home()):
+        emit(f"✓ removed {service} from {credentials_path(default_home())}")
+        return
+    emit(f"{service} was not stored in {credentials_path(default_home())}")
 
 
 @sandbox_app.command("build")
@@ -813,7 +913,7 @@ deprecated: false
 def lessons_root(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
-    home = Path(os.environ.get("PILOT_AGENT_HOME", "~/.pilot-agent")).expanduser()
+    home = default_home()
     path = home / "lessons.md"
     emit(path.read_text(encoding="utf-8") if path.exists() else "")
 
@@ -822,7 +922,7 @@ def lessons_root(ctx: typer.Context) -> None:
 def lessons_clear(force: bool = typer.Option(False, "--yes", "-y")) -> None:
     if not force and not typer.confirm("Clear lessons.md?"):
         raise typer.Exit(1)
-    home = Path(os.environ.get("PILOT_AGENT_HOME", "~/.pilot-agent")).expanduser()
+    home = default_home()
     path = home / "lessons.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("", encoding="utf-8")

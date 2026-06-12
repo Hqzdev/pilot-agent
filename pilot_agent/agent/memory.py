@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shlex
 from collections.abc import Callable
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Protocol
 
 from pilot_agent.agent.types import Message, Role, ToolCall, ToolResult
+from pilot_agent.config.schema import default_home
 
 LessonSummarizer = Callable[[str], str]
 
@@ -155,7 +155,7 @@ class LessonEntry:
 
 
 def _default_home() -> Path:
-    return Path(os.environ.get("PILOT_AGENT_HOME", "~/.pilot-agent")).expanduser()
+    return default_home()
 
 
 def _result_json(result: ToolResult) -> dict[str, object]:

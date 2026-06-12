@@ -89,4 +89,4 @@ def test_credentials_file_does_not_touch_config(
     if config_path.exists():
         assert "brave-secret" not in config_path.read_text(encoding="utf-8")
     data = yaml.safe_load((home / "credentials.yaml").read_text(encoding="utf-8"))
-    assert data["brave"] == "brave-secret"
+    assert data["brave"]["api_key"] == "brave-secret"

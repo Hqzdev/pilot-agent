@@ -1,7 +1,34 @@
 # Quickstart
 
-This document covers the path from installation to the first Discovery question.
-It will include Docker-first install commands, the native uv alternative, and
-the first checks users should run.
+Install on Linux, macOS, or WSL2:
 
-<!-- TODO: filled during the onboarding stage -->
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash
+```
+
+The installer prints a plan before acting, writes command output to a log under
+`/tmp`, installs user-space dependencies without sudo, and places `pilot-agent` in
+`~/.local/bin`.
+
+First project:
+
+```bash
+pilot-agent setup
+cd path/to/project
+pilot-agent init
+pilot-agent doctor
+pilot-agent run
+```
+
+`setup` asks for one thing at a time: provider, API key, model, and optional
+Vercel token. Keys are stored in `~/.pilot-agent/credentials.yaml` with mode
+`0600`. You can skip setup in CI by setting env vars such as
+`ANTHROPIC_API_KEY`, `PILOT_AGENT_PROVIDER`, and `PILOT_AGENT_MODEL`.
+
+If anything is misconfigured, run:
+
+```bash
+pilot-agent doctor
+```
+
+Every failed check includes the command that fixes it.

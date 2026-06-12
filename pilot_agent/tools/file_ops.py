@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
+from pilot_agent.config.schema import default_home
 from pilot_agent.tools.base import Tool
 
 IGNORED = {".git", "node_modules", "__pycache__", ".venv", "dist", "build", ".next"}
@@ -12,9 +12,7 @@ IGNORED = {".git", "node_modules", "__pycache__", ".venv", "dist", "build", ".ne
 class ProjectPaths:
     def __init__(self, project_root: Path):
         self.project_root = project_root.resolve()
-        self.home_memory = (
-            Path(os.environ.get("PILOT_AGENT_HOME", "~/.pilot-agent")).expanduser().resolve()
-        )
+        self.home_memory = default_home().resolve()
 
     def resolve(self, path: str, *, write: bool = False) -> Path:
         candidate = Path(path).expanduser()

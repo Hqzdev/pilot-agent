@@ -87,13 +87,15 @@ class ProviderConfig(BaseModel):
     base_url: str | None = None
 
     def resolve_key(self) -> str:
-        value = os.environ.get(self.api_key_env)
-        if not value:
+        from pilot_agent.config.credentials import resolve_credential
+
+        resolved = resolve_credential(self.provider, default_home(), env_name=self.api_key_env)
+        if not resolved.value:
             raise RuntimeError(
-                f"Missing API key. Set {self.api_key_env} in your environment before running. "
-                f"Run: pilot-agent setup or export {self.api_key_env}=<api-key>"
+                f"API key not found for {self.provider}. "
+                f"Run: pilot-agent auth set {self.provider}"
             )
-        return value
+        return resolved.value
 
 
 class PilotAgentConfig(ProviderConfig):

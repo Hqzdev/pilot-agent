@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +7,8 @@ from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
+
+from pilot_agent.config.schema import default_home
 
 
 class SkillMeta(BaseModel):
@@ -30,7 +31,7 @@ class SkillRecord:
 class SkillRegistry:
     def __init__(self, paths: list[Path], home: Path | None = None):
         self.paths = paths
-        self.home = home or Path(os.environ.get("PILOT_AGENT_HOME", "~/.pilot-agent")).expanduser()
+        self.home = home or default_home()
         self.learned_dir = self.home / "skills"
         self.records: dict[str, SkillRecord] = {}
         self._scan()

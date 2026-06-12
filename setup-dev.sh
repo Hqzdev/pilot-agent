@@ -21,4 +21,11 @@ exec uv run pilot-agent "$@"
 EOF
 chmod +x pilot-agent-dev
 
-echo "OK: run ./pilot-agent-dev --help"
+cat > pilot-agent <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+exec uv run pilot-agent "$@"
+EOF
+chmod +x pilot-agent
+
+echo "OK: run ./pilot-agent --help"
