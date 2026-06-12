@@ -45,8 +45,7 @@ class SkillRegistry:
                 self.records[meta.name] = SkillRecord(meta=meta, path=path)
 
     def index_for_prompt(self, phase: str, stack: list[str]) -> str:
-        del phase
-        stack_set = {item.lower() for item in stack}
+        stack_set = {item.lower() for item in [*stack, phase]}
         lines = [
             "Available skills (call load_skill(name) BEFORE the matching task):",
         ]

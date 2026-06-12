@@ -54,6 +54,20 @@ def test_index_filters_triggers_and_deprecated(tmp_path: Path) -> None:
     assert "old-skill" not in index
 
 
+def test_index_matches_current_phase_trigger(tmp_path: Path) -> None:
+    path = tmp_path / "skills"
+    path.mkdir()
+    (path / "acceptance.md").write_text(
+        skill_doc("local-acceptance", triggers="[acceptance, review]"),
+        encoding="utf-8",
+    )
+    registry = SkillRegistry([path], home=tmp_path / "home")
+
+    index = registry.index_for_prompt("acceptance", [])
+
+    assert "local-acceptance" in index
+
+
 def test_load_and_save_skill_tools_and_duplicate_merge(tmp_path: Path) -> None:
     learned = tmp_path / "home" / "skills"
     learned.mkdir(parents=True)
@@ -92,18 +106,28 @@ def test_builtin_skills_exist_and_have_content() -> None:
     names = {path.stem for path in builtin.glob("*.md")}
 
     assert names == {
+        "bugfix-intake",
+        "competitor-scan",
         "fastapi-scaffold",
+        "frontend-api-wiring",
+        "launch-posts",
+        "local-acceptance",
+        "mvp-scoping",
+        "nextjs-project-plan",
         "nextjs-scaffold",
-        "sqlite-schema-design",
         "nextjs-vercel-deploy",
+        "production-env-vars",
         "python-deps-uv",
-        "reddit-launch-post",
         "readme-structure",
+        "sqlite-schema-design",
     }
     for path in builtin.glob("*.md"):
         text = path.read_text(encoding="utf-8")
+        assert "## When to use" in text
+        assert "## Steps" in text
         assert "## Known pitfalls" in text
         assert "## Verified commands" in text
+        assert len(text.splitlines()) >= 35
 
 
 def test_deploy_load_skill_precedes_vercel_command() -> None:

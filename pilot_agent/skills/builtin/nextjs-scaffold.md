@@ -1,7 +1,7 @@
 ---
 name: nextjs-scaffold
-description: Create a Next.js app-router MVP with predictable structure and local checks.
-triggers: [nextjs, react, frontend]
+description: Scaffold a non-interactive Next.js app-router MVP and verify it locally.
+triggers: [nextjs, scaffold, setup]
 version: 1
 source: builtin
 success_count: 0
@@ -9,20 +9,37 @@ failure_count: 0
 deprecated: false
 ---
 ## When to use
-Use when creating a new React web app for the MVP coding phase.
+Use in Coding when creating a new Next.js app inside an already initialized
+Pilot Agent project.
 
 ## Steps
-1. Run `npx create-next-app@latest web --ts --eslint --app --src-dir --no-tailwind --import-alias "@/*"`.
-2. Put routes under `src/app/`, reusable UI under `src/components/`, and server utilities under `src/lib/`.
-3. Keep the first route runnable with `npm run dev -- --hostname 0.0.0.0`.
-4. Add a `/health` route if deployment checks need an HTTP probe.
+1. Run create-next-app with explicit flags so the CLI never blocks:
+   `npx create-next-app@latest . --ts --eslint --app --src-dir --tailwind --no-git --import-alias "@/*" --use-npm`
+2. Use `--no-git` because the project repository already exists.
+3. Keep the app in the project root unless STATE.md explicitly plans a `web/`
+   subdirectory.
+4. Remove starter content from `src/app/page.tsx`, but keep `layout.tsx` and
+   global CSS.
+5. Create only the first screen needed by the core flow. Do not build a
+   marketing homepage unless the product itself is a landing page.
+6. Verify with:
+   `npm run lint`
+   `npm run build`
+   `run_and_check` command `npm run dev -- --hostname 0.0.0.0 --port 3000`
+   and `http_probe` `http://127.0.0.1:3000`.
 
 ## Known pitfalls
-- Do not mix pages router and app router in a new MVP.
-- Server-only code must not be imported by client components.
-- Containerized runs need `--hostname 0.0.0.0`.
+- Interactive create-next-app prompts break non-interactive `bash`; every answer
+  must be represented as a flag.
+- The sandbox image has npm. Do not switch to pnpm unless the project already
+  has pnpm installed and locked.
+- A dev server bound to the wrong host can pass locally but fail through a
+  container probe. Use `--hostname 0.0.0.0`.
+- Do not import server-only modules into client components. If a component uses
+  browser state, isolate it behind a small `'use client'` boundary.
 
 ## Verified commands
+- `npx create-next-app@latest . --ts --eslint --app --src-dir --tailwind --no-git --import-alias "@/*" --use-npm`
 - `npm run lint`
 - `npm run build`
-- `npm run dev -- --hostname 0.0.0.0`
+- `npm run dev -- --hostname 0.0.0.0 --port 3000`
