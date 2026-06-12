@@ -6,12 +6,14 @@ Install on Linux, macOS, or WSL2:
 curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash
 ```
 
-The installer prints a plan before acting, writes command output to a log under
-`/tmp`, installs user-space dependencies without sudo, and places `pilot-agent` in
-`~/.local/bin`.
+The installer prints a staged plan before acting, writes command output to a log
+under `/tmp`, installs user-space dependencies without sudo, and places
+`pilot-agent` in `~/.local/bin`.
 When an interactive terminal is available, it immediately starts
 `pilot-agent setup` after installation. For install-only automation, pass
-`--no-setup` or set `PILOT_AGENT_INSTALL_NO_SETUP=1`.
+`--skip-setup` / `--no-setup` or set `PILOT_AGENT_INSTALL_NO_SETUP=1`.
+Use `--native` to force uv tool install, `--docker` to require sandbox mode, and
+`--branch <name>` when testing a non-main installer branch.
 
 First project:
 

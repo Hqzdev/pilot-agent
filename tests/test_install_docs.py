@@ -15,7 +15,12 @@ def test_install_script_uses_user_local_bin_not_usr_local() -> None:
     assert "$HOME/.local/bin" in text
     assert "/usr/local/bin/pilot-agent" not in text
     assert "docker compose" in text
+    assert "Pilot Agent Installer" in text
+    assert "UV_NO_CONFIG" in text
+    assert "--skip-setup" in text
     assert "--no-setup" in text
+    assert "--branch NAME" in text
+    assert "--pilot-home PATH" in text
     assert "setup --reconfigure < /dev/tty" in text
 
 

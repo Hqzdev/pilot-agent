@@ -36,8 +36,17 @@ curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh 
 ```
 
 Prefer to inspect first? Download `install.sh`, read it, run it.
-After installing, the script starts `pilot-agent setup` automatically when an
-interactive terminal is available. Use `--no-setup` to install only.
+The installer prints a staged plan, writes full command output to a log, and
+starts `pilot-agent setup` automatically when an interactive terminal is
+available. Use `--skip-setup` or `--no-setup` to install only.
+
+Useful installer options:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash -s -- --skip-setup
+curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash -s -- --native
+curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash -s -- --docker --branch main
+```
 
 <details><summary>Windows</summary>
 
