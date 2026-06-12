@@ -1,4 +1,6 @@
-# Pilot Agent ⚙
+# Pilot Agent
+
+![Pilot Agent banner](public/banner.png)
 
 **From idea to deployed MVP — one terminal session.**
 
