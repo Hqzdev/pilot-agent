@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,24 +19,24 @@ STATE_TEMPLATE = """# Project: {name}
 """.replace("{todo_heading}", TASKS_HEADING)
 
 
-def devagent_dir(project_root: Path) -> Path:
+def pilot_agent_dir(project_root: Path) -> Path:
     return project_root.resolve() / ".pilot-agent"
 
 
 def state_path(project_root: Path) -> Path:
-    return devagent_dir(project_root) / "STATE.md"
+    return pilot_agent_dir(project_root) / "STATE.md"
 
 
 def session_path(project_root: Path) -> Path:
-    return devagent_dir(project_root) / "session.jsonl"
+    return pilot_agent_dir(project_root) / "session.jsonl"
 
 
 def artifacts_dir(project_root: Path) -> Path:
-    return devagent_dir(project_root) / "artifacts"
+    return pilot_agent_dir(project_root) / "artifacts"
 
 
 def init_project_state(project_root: Path, name: str | None = None) -> Path:
-    root = devagent_dir(project_root)
+    root = pilot_agent_dir(project_root)
     root.mkdir(parents=True, exist_ok=True)
     artifacts_dir(project_root).mkdir(parents=True, exist_ok=True)
     session_path(project_root).touch(exist_ok=True)
@@ -49,8 +50,22 @@ def read_state(project_root: Path) -> str:
     return state_path(project_root).read_text(encoding="utf-8")
 
 
+def append_reentry_request(project_root: Path, *, kind: str, description: str) -> None:
+    clean_description = " ".join(description.strip().split())
+    if not clean_description:
+        raise ValueError("re-entry description cannot be empty")
+    path = state_path(project_root)
+    text = path.read_text(encoding="utf-8")
+    if kind == "bugfix":
+        text = _append_to_section(text, "Known issues", f"- {clean_description}")
+        task = f"- [ ] Bug fix: reproduce and fix {clean_description}"
+    else:
+        task = f"- [ ] Improvement: {clean_description}"
+    path.write_text(_append_to_section(text, TASKS_HEADING, task), encoding="utf-8")
+
+
 def write_session_record(project_root: Path, record: Message | dict[str, Any]) -> None:
-    devagent_dir(project_root).mkdir(parents=True, exist_ok=True)
+    pilot_agent_dir(project_root).mkdir(parents=True, exist_ok=True)
     line = (
         to_json(record)
         if isinstance(record, Message)
@@ -72,3 +87,14 @@ def read_session_messages(project_root: Path) -> list[Message]:
             if isinstance(item, Message):
                 messages.append(item)
     return messages
+
+
+def _append_to_section(text: str, heading: str, line: str) -> str:
+    pattern = rf"(^## {re.escape(heading)}\n)(.*?)(?=^## |\Z)"
+    match = re.search(pattern, text, flags=re.S | re.M)
+    if match is None:
+        return text.rstrip() + f"\n## {heading}\n{line}\n"
+    body_start, body_end = match.span(2)
+    body = match.group(2).rstrip()
+    updated = f"{body}\n{line}\n" if body else f"{line}\n"
+    return text[:body_start] + updated + text[body_end:]

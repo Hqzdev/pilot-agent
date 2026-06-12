@@ -47,12 +47,14 @@ def render_banner(console: Console, state: BannerState, *, force: bool = False) 
     art = Text(ASCII_ART, style="pilot_agent.accent")
     console.print(art)
     phase_idx = PIPELINE.index(state.phase) + 1 if state.phase in PIPELINE else 0
+    phase_total = len(PIPELINE)
     metadata = key_value_grid(
         [
             ("model", f"{state.provider}:{state.model}"),
             (
                 "project",
-                f"{state.project_root}          phase  {g.PHASE} {state.phase} ({phase_idx}/5)",
+                f"{state.project_root}          phase  {g.PHASE} {state.phase} "
+                f"({phase_idx}/{phase_total})",
             ),
             (
                 "memory",

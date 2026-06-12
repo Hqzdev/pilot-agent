@@ -13,7 +13,7 @@ class Phase:
     next: str | None
 
 
-PIPELINE = ["discovery", "planning", "coding", "deploy", "marketing"]
+PIPELINE = ["discovery", "planning", "coding", "acceptance", "deploy", "marketing"]
 
 PHASES: dict[str, Phase] = {
     "discovery": Phase(
@@ -49,6 +49,22 @@ PHASES: dict[str, Phase] = {
             "run_and_check",
             "web_search",
             "web_fetch",
+            "load_skill",
+            "ask_user",
+            "complete_phase",
+        ],
+        next="acceptance",
+    ),
+    "acceptance": Phase(
+        name="acceptance",
+        prompt=prompts.acceptance_prompt(),
+        tools=[
+            "read_file",
+            "write_file",
+            "edit_file",
+            "list_files",
+            "bash",
+            "run_and_check",
             "load_skill",
             "ask_user",
             "complete_phase",

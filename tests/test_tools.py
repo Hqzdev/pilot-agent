@@ -118,7 +118,7 @@ def test_file_tools_enforce_paths_and_edit_uniqueness(tmp_path: Path) -> None:
     assert outside.is_error is True
 
 
-def test_read_file_allows_home_devagent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_file_allows_pilot_agent_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     memory = home
     memory.mkdir(parents=True)

@@ -38,7 +38,7 @@ class AgentLoop:
         memory: Memory | None = None,
         ui: UI | None = None,
         history: list[Message] | None = None,
-        phase_name: str = "discovery",
+        phase_name: str | None = "discovery",
         stack: list[str] | None = None,
         model_switcher: Callable[[str], Provider] | None = None,
     ):
@@ -59,7 +59,7 @@ class AgentLoop:
         self.ui = ui or UI()
         self.history = history or []
         self.memory.end_of_session(self.history)
-        self.phase: Phase | None = PHASES[phase_name]
+        self.phase: Phase | None = PHASES[phase_name] if phase_name is not None else None
         self.stack = stack or []
         self.loaded_skills: dict[str, set[str]] = {}
         self.model_switcher = model_switcher
@@ -243,13 +243,13 @@ class AgentLoop:
         return response.message.content
 
 
-def restore_phase_from_session(project_root: Path) -> str:
+def restore_phase_from_session(project_root: Path) -> str | None:
     session = project_root / ".pilot-agent" / "session.jsonl"
-    phase = "discovery"
+    phase: str | None = "discovery"
     if not session.exists():
         return phase
     for line in session.read_text(encoding="utf-8").splitlines():
         data = json.loads(line)
         if data.get("_type") == "phase_change":
-            phase = data.get("to") or phase
+            phase = data.get("to")
     return phase
