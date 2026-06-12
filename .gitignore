@@ -1,6 +1,5 @@
 .supergoal/
 .devagent/
-devagent-dev
 .uv-cache/
 .venv/
 .pytest_cache/
