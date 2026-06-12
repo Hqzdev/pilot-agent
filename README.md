@@ -2,7 +2,7 @@
 
 **From idea to deployed MVP — one terminal session.**
 
-[![CI](https://github.com/Hqzdev/Pilot-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Hqzdev/Pilot-Agent/actions/workflows/ci.yml)
+[![CI](https://github.com/Hqzdev/pilot-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Hqzdev/pilot-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 [![Ruff](https://img.shields.io/badge/lint-ruff-46a2f1.svg)](https://github.com/astral-sh/ruff)
@@ -34,7 +34,7 @@ the conversation.
 ### Linux, macOS, WSL2
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Hqzdev/Pilot-Agent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash
 ```
 
 The installer detects Docker and prepares the sandboxed backend. No Docker? It
@@ -50,7 +50,7 @@ Native Windows is planned for v1.1. WSL2 works today with the command above.
 <details><summary>Manual install (uv)</summary>
 
 ```bash
-uv tool install git+https://github.com/Hqzdev/Pilot-Agent
+uv tool install git+https://github.com/Hqzdev/pilot-agent
 ```
 
 </details>
@@ -155,7 +155,7 @@ local backend exists for speed and constrained environments.
 ## Contributing
 
 ```bash
-git clone https://github.com/Hqzdev/Pilot-Agent.git
+git clone https://github.com/Hqzdev/pilot-agent.git
 cd devagent
 ./setup-dev.sh
 ./devagent --help
