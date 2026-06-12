@@ -6,13 +6,18 @@ import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import Application
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.key_processor import KeyPressEvent
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.containers import Window
+from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from rich.prompt import Confirm, IntPrompt, Prompt
 
@@ -86,6 +91,10 @@ class PilotAgentInput:
             {
                 "completion-menu.completion.current": current,
                 "completion-menu.meta.completion.current": current,
+                "choice.prompt": Palette.USER,
+                "choice.selected": f"bold {Palette.ACCENT}",
+                "choice.normal": Palette.USER,
+                "choice.hint": Palette.MUTED,
             }
         )
 
@@ -129,6 +138,79 @@ class PilotAgentInput:
             return int(IntPrompt.ask(message, default=default, choices=choices))
         answer = self.prompt(message, default=str(default), choices=choices)
         return int(answer)
+
+    def select(
+        self,
+        message: str,
+        choices: list[tuple[str, str]],
+        *,
+        default: int = 0,
+    ) -> str:
+        if not choices:
+            raise ValueError("select requires at least one choice")
+        default = max(0, min(default, len(choices) - 1))
+        if not sys.stdin.isatty():
+            return self._fallback_select(message, choices, default)
+        selected = [default]
+        g = glyphs()
+
+        def formatted_choices() -> list[tuple[str, str]]:
+            fragments: list[tuple[str, str]] = [("class:choice.prompt", f"{message}\n")]
+            for idx, (_, label) in enumerate(choices):
+                if idx == selected[0]:
+                    fragments.append(("class:choice.selected", f"{g.PROMPT} {label}\n"))
+                else:
+                    fragments.append(("class:choice.normal", f"  {label}\n"))
+            fragments.append(("class:choice.hint", "↑/↓ choose · Enter select\n"))
+            return fragments
+
+        bindings = KeyBindings()
+
+        @bindings.add("up")
+        @bindings.add("k")
+        def _up(event: KeyPressEvent) -> None:
+            selected[0] = (selected[0] - 1) % len(choices)
+            event.app.invalidate()
+
+        @bindings.add("down")
+        @bindings.add("j")
+        def _down(event: KeyPressEvent) -> None:
+            selected[0] = (selected[0] + 1) % len(choices)
+            event.app.invalidate()
+
+        @bindings.add("enter")
+        def _enter(event: KeyPressEvent) -> None:
+            event.app.exit(result=choices[selected[0]][0])
+
+        @bindings.add("c-c")
+        def _interrupt(event: KeyPressEvent) -> None:
+            event.app.exit(exception=KeyboardInterrupt())
+
+        control: Any = FormattedTextControl(formatted_choices, focusable=True)
+        app: Application[str] = Application(
+            layout=Layout(Window(control, height=len(choices) + 2, always_hide_cursor=True)),
+            key_bindings=bindings,
+            mouse_support=True,
+            full_screen=False,
+            style=self.style,
+        )
+        return app.run()
+
+    def _fallback_select(
+        self,
+        message: str,
+        choices: list[tuple[str, str]],
+        default: int,
+    ) -> str:
+        prompt_message = message + "\n" + "\n".join(
+            f"  {idx}. {label}" for idx, (_, label) in enumerate(choices, start=1)
+        )
+        answer = IntPrompt.ask(
+            prompt_message,
+            default=default + 1,
+            choices=[str(idx) for idx in range(1, len(choices) + 1)],
+        )
+        return choices[answer - 1][0]
 
     def _fallback_prompt(
         self,

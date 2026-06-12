@@ -25,7 +25,7 @@ def test_setup_with_existing_env_key_writes_config_without_secret(
     result = runner.invoke(
         app,
         ["setup", "--provider", "anthropic"],
-        input="\n\nn\n",
+        input="\nn\n",
     )
 
     assert result.exit_code == 0
@@ -197,6 +197,11 @@ def test_setup_wizard_can_be_called_directly_with_defaults(
         setup_wizard.PilotAgentInput,
         "ask_int",
         lambda self, *args, **kwargs: kwargs["default"],
+    )
+    monkeypatch.setattr(
+        setup_wizard.PilotAgentInput,
+        "select",
+        lambda self, message, choices, **kwargs: choices[kwargs["default"]][0],
     )
     monkeypatch.setattr(setup_wizard, "_docker_available", lambda: True)
 

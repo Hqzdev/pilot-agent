@@ -61,8 +61,7 @@ def run_setup_wizard(
     model_default = (
         current.model if current and current.provider == provider else default_model(provider)
     )
-    _show_model_hints(provider, home, console)
-    model = prompt.prompt("Model", default=model_default)
+    model = _ask_model(prompt, console, provider, model_default, home)
     _step(console, 4, 4, "Deploy")
     deploy_default = current.phases.deploy.enabled if current else True
     deploy_enabled = prompt.confirm(
@@ -113,19 +112,54 @@ def _ask_provider(
     current: PilotAgentConfig | None,
 ) -> str:
     _step(console, 1, 4, "Provider")
-    default = {"anthropic": 1, "openai": 2, "openrouter": 3}.get(
+    default = {"anthropic": 0, "openai": 1, "openrouter": 2}.get(
         current.provider if current else "anthropic",
-        1,
+        0,
     )
-    choice = prompt.ask_int(
-        "Choose an LLM provider: "
-        "1. Anthropic (recommended - best tool calling)  "
-        "2. OpenAI  "
-        "3. OpenRouter (200+ models, one key)",
+    return prompt.select(
+        "Choose an LLM provider:",
+        [
+            ("anthropic", "Anthropic (recommended - best tool calling)"),
+            ("openai", "OpenAI"),
+            ("openrouter", "OpenRouter (200+ models, one key)"),
+        ],
         default=default,
-        choices=["1", "2", "3"],
     )
-    return {1: "anthropic", 2: "openai", 3: "openrouter"}[choice]
+
+
+def _ask_model(
+    prompt: PilotAgentInput,
+    console: Console,
+    provider: str,
+    default: str,
+    home: Path,
+) -> str:
+    models = list_models(
+        provider,
+        api_key=resolve_credential(provider, home, env_name=provider_key_env(provider)).value,
+    )
+    choices = [
+        (model.name, _model_label(model.name, model.context_window))
+        for model in models[:20]
+    ]
+    choices.append(("__custom__", "Custom model..."))
+    default_index = next(
+        (idx for idx, (name, _) in enumerate(choices) if name == default),
+        0,
+    )
+    selected = prompt.select("Choose a model:", choices, default=default_index)
+    if selected == "__custom__":
+        return prompt.prompt("Model", default=default)
+    console.print(f"{glyphs().OK} Model: {selected}", style="pilot_agent.ok")
+    return selected
+
+
+def _model_label(name: str, context_window: int) -> str:
+    if context_window >= 1_000_000:
+        context = f"{context_window // 1_000_000}M"
+    else:
+        context = f"{context_window // 1_000}k"
+    return f"{name} ({context} context)"
 
 
 def _ensure_provider_key(
@@ -217,17 +251,6 @@ def _ensure_vercel_token(prompt: PilotAgentInput, console: Console, home: Path) 
             f"{g.WARN} Deploy phase will ask for Vercel credentials later",
             style="pilot_agent.warn",
         )
-
-
-def _show_model_hints(provider: str, home: Path, console: Console) -> None:
-    if provider != "openrouter":
-        return
-    api_key = resolve_credential(provider, home, env_name=provider_key_env(provider)).value
-    models = list_models(provider, api_key=api_key)[:10]
-    if not models:
-        return
-    names = ", ".join(model.name for model in models[:5])
-    console.print(f"Popular tool-capable models: {names}", style="pilot_agent.dim")
 
 
 def _key_url(provider: str) -> str:

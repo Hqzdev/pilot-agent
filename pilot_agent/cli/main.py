@@ -493,22 +493,20 @@ def render_model_table(provider_name: str) -> None:
 
 def _choose_model_provider(cfg: PilotAgentConfig) -> str:
     prompt = PilotAgentInput(history_path=default_home() / "input_history")
-    default = {name: idx for idx, name in enumerate(PROVIDERS, start=1)}.get(cfg.provider, 1)
-    lines = []
-    for idx, provider_name in enumerate(PROVIDERS, start=1):
+    choices: list[tuple[str, str]] = []
+    for provider_name in PROVIDERS:
         resolved = resolve_credential(
             provider_name,
             default_home(),
             env_name=provider_key_env(provider_name),
         )
         status = "✓" if resolved.value else "✗ no key"
-        lines.append(f"{idx}. {provider_name} ({status})")
-    choice = prompt.ask_int(
-        "Choose provider: " + "  ".join(lines),
-        default=default,
-        choices=["1", "2", "3"],
+        choices.append((provider_name, f"{provider_name} ({status})"))
+    default = next(
+        (idx for idx, (provider_name, _) in enumerate(choices) if provider_name == cfg.provider),
+        0,
     )
-    return PROVIDERS[choice - 1]
+    return prompt.select("Choose provider:", choices, default=default)
 
 
 def _choose_model(provider_name: str) -> str:
@@ -519,12 +517,19 @@ def _choose_model(provider_name: str) -> str:
         env_name=provider_key_env(provider_name),
     )
     models = list_models(provider_name, api_key=api_key)
-    choices = [str(idx) for idx in range(1, min(len(models), 20) + 1)]
-    rendered = "  ".join(
-        f"{idx}. {model.name}" for idx, model in enumerate(models[:20], start=1)
+    choices = [
+        (model.name, f"{model.name} ({model.context_window // 1_000}k context)")
+        for model in models[:20]
+    ]
+    choices.append(("__custom__", "Custom model..."))
+    selected = prompt.select(
+        "Choose model:",
+        choices,
+        default=0,
     )
-    choice = prompt.ask_int(f"Choose model: {rendered}", default=1, choices=choices)
-    return models[choice - 1].name
+    if selected == "__custom__":
+        return prompt.prompt("Model", default=models[0].name if models else "")
+    return selected
 
 
 @app.command("backend")
