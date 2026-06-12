@@ -1,0 +1,22 @@
+services:
+  devagent:
+    build: .
+    image: devagent:latest
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      - devagent-home:/home/agent/.devagent
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - VERCEL_TOKEN=${VERCEL_TOKEN:-}
+    # Uncomment for manual browser checks from the host:
+    # ports:
+    #   - "3000:3000"
+    #   - "8000:8000"
+
+volumes:
+  devagent-home:

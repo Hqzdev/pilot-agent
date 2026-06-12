@@ -1,0 +1,22 @@
+# DevAgent user config. All fields are optional; defaults live in devagent/config/defaults.yaml.
+# Secrets are never stored here. Store only env-var names such as ANTHROPIC_API_KEY.
+
+provider: anthropic              # anthropic | openai | openrouter
+model: claude-sonnet-4-6
+api_key_env: ANTHROPIC_API_KEY
+base_url: null                   # optional proxy/self-hosted base URL
+summarizer_model: null           # null = use main model
+budget_ratio: 0.7
+max_turns: 200
+tool_timeout_s: 120
+
+phases:
+  deploy:
+    enabled: true
+    vercel_token_env: VERCEL_TOKEN
+  marketing:
+    enabled: true
+
+ui:
+  color: auto                    # auto | always | never
+  show_token_counter: true
