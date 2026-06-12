@@ -1,169 +1,183 @@
-# DevAgent
+# DevAgent ⚙
 
-CLI-агент: от идеи до задеплоенного MVP за одну сессию через фазы Discovery, Planning, Coding, Deploy и Marketing.
+**From idea to deployed MVP — one terminal session.**
 
-## Demo
+[![CI](https://github.com/Muhammadcell/devagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Muhammadcell/devagent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
+[![Ruff](https://img.shields.io/badge/lint-ruff-46a2f1.svg)](https://github.com/astral-sh/ruff)
 
-TODO: записать demo GIF через `vhs` или `asciinema`: `devagent setup`, `/model openrouter:qwen/qwen3-coder`, `devagent run`.
+DevAgent is a local CLI agent that takes a product idea through discovery,
+planning, coding, deployment, and launch copy in one guided session. It doesn't
+consider a task done until the code actually runs through the built-in
+verification loop, and it keeps project state outside the chat in `STATE.md`.
+Lessons and learned skills persist across projects as plain markdown you can
+read and edit.
 
-## Возможности
+Use Anthropic, OpenAI, or OpenRouter. The core history format is provider
+agnostic, so `/model` can switch providers mid-session without throwing away
+the conversation.
 
-| Фича | Что даёт |
+## Capabilities
+
+| Feature | Description |
 |---|---|
-| provider-agnostic | Можно переключить модель mid-session без потери истории: канонический формат не зависит от API. |
-| three-tier context | Контекст ужимается через truncation tool results, summarization и внешний `STATE.md`. |
-| self-improving | Ошибки из `run_and_check` превращаются в lessons, deploy-процедуры могут стать learned skills. |
-| sandboxed | В Docker-режиме bash агента выполняется внутри контейнера, а не напрямую на твоей машине. |
-| verification loop | Агент не считает задачу сделанной, пока код не запустился и проверка не прошла. |
+| A real terminal interface | Multiline editing, slash-command autocomplete, input history, interrupt handling, and collapsed tool output. |
+| Verification loop | The agent runs what it writes, reads stderr, and fixes; a task is not complete until the check passes. |
+| A learning loop | Lessons from fix cycles, deploy skill synthesis, skill scoring, and plain markdown memory under `~/.devagent/`. |
+| Provider-agnostic core | Canonical dataclass messages under the hood; provider conversion happens only at API call time. |
+| Sandboxed by default | Agent commands can execute in a per-session Docker sandbox; local backend is available when explicitly selected. |
+| Three-tier context | Tool-output truncation, LLM summarization, and externalized project state in `.devagent/STATE.md`. |
 
 ## Quick Install
+
+### Linux, macOS, WSL2
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Muhammadcell/devagent/main/install.sh | bash
 ```
 
-Windows: используй WSL2 и ту же команду внутри Linux shell.
+The installer detects Docker and prepares the sandboxed backend. No Docker? It
+falls back to a native install via `uv` and tells you before running commands
+locally.
 
-<details>
-<summary>Native uv install</summary>
+<details><summary>Windows (native)</summary>
+
+Native Windows is planned for v1.1. WSL2 works today with the command above.
+
+</details>
+
+<details><summary>Manual install (uv)</summary>
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install git+https://github.com/Muhammadcell/devagent.git
+uv tool install git+https://github.com/Muhammadcell/devagent
 ```
 
 </details>
 
+After installation:
+
+```bash
+devagent setup    # 1-minute wizard: provider, key, model, sandbox, tools
+cd your-project && devagent init && devagent run
+```
+
 ## Getting Started
 
 ```bash
-cd <папка проекта>
-devagent setup          # первичная настройка, ключи не пишутся в config.yaml
-devagent doctor         # диагностика окружения и провайдера
-devagent init           # создаёт .devagent/STATE.md
-devagent run            # старт Discovery -> Planning -> Coding -> Deploy -> Marketing
-devagent status         # фаза, TODO, токены, session.jsonl
+devagent              # start / continue a session in the current project
+devagent setup        # full setup wizard: provider, keys, sandbox, tools
+devagent model        # choose your LLM provider and model
+devagent model <provider>:<model>
+devagent tools        # enable/configure web search, fetch, and deploy tools
+devagent backend      # choose where agent commands run: docker or local
+devagent doctor       # diagnose config, provider, tools, backend, and project state
+devagent lessons clear
+devagent update       # update to the latest version
 ```
 
-Docker install создаёт wrapper в `~/.local/bin/devagent`, собирает образ и монтирует текущую папку как `/workspace`. Долговременная память живёт в named volume `devagent-home`.
+## Slash Commands
 
-## CLI Reference
-
-| Команда | Назначение |
+| Action | Command |
 |---|---|
-| `devagent setup` | Мастер первичной настройки. |
-| `devagent setup --provider X` | Setup с заранее выбранным провайдером. |
-| `devagent setup --reconfigure` | Перезаписать существующий config через wizard. |
-| `devagent doctor` | Диагностика окружения, конфига, инструментов, памяти и проекта. |
-| `devagent doctor --json` | Машиночитаемый doctor для CI/issues. |
-| `devagent update` | Обновить Docker checkout или native uv tool. |
-| `devagent version` | Версия, commit hash, Python и платформа. |
-| `devagent model` | Показать модели текущего провайдера. |
-| `devagent model <provider>:<model>` | Переключить провайдера и модель. |
-| `devagent model --list` | Таблица моделей текущего провайдера. |
-| `devagent config` | Таблица config: ключ, значение, источник. |
-| `devagent config set <key> <value>` | Dot-notation правка с pydantic-валидацией. |
-| `devagent config get <key>` | Одно значение конфига. |
-| `devagent config edit` | Открыть `config.yaml` в `$EDITOR`. |
-| `devagent config path` | Напечатать путь к user config. |
-| `devagent init [path]` | Создать `.devagent/STATE.md`, `session.jsonl`, `artifacts/`. |
-| `devagent run` | Старт или продолжение pipeline. |
-| `devagent resume` | Продолжить из `session.jsonl`. |
-| `devagent status` | Текущая фаза, TODO-прогресс, токены сессии. |
-| `devagent skills list` | Таблица builtin и learned skills. |
-| `devagent skills show <name>` | Полный markdown скилла. |
-| `devagent skills new` | Шаблон нового learned skill в `$EDITOR`. |
-| `devagent lessons` | Показать `lessons.md`. |
-| `devagent lessons clear` | Очистить `lessons.md` с подтверждением. |
-| `devagent sessions list` | Сводка по текущей session.jsonl. |
+| Change model mid-session | `/model [provider:model]` |
+| Skip to next phase | `/skip` |
+| Compress context / check usage | `/compact`, `/usage` |
+| Show project state | `/state` |
+| Browse skills | `/skills` |
+| Undo last turn | `/undo` |
+| Interrupt current work | `Ctrl+C` or type a new instruction |
 
-Глобальные флаги ставятся перед командой: `--provider X`, `--model Y`, `--config <path>`, `--verbose` / `-v`, `--no-color`.
+## How It Works
 
-Slash-команды внутри сессии обрабатываются до LLM: `/model`, `/skip`, `/compact`, `/usage`, `/state`, `/skills`, `/undo`, `/help`, `/quit`.
+DevAgent runs a five-phase pipeline:
 
-## Configuration
-
-`config.yaml` хранит только имена env-переменных, не секреты:
-
-```yaml
-provider: anthropic
-model: claude-sonnet-4-6
-api_key_env: ANTHROPIC_API_KEY
-base_url: null
-summarizer_model: null
-budget_ratio: 0.7
-max_turns: 200
-tool_timeout_s: 120
-phases:
-  deploy:
-    enabled: true
-    vercel_token_env: VERCEL_TOKEN
-  marketing:
-    enabled: true
-ui:
-  color: auto
-  show_token_counter: true
-```
-
-Приоритет значений: CLI flags, `DEVAGENT_*` env, `<project>/.devagent/config.yaml`, `~/.devagent/config.yaml`, встроенные defaults.
-
-| Env | Использование |
-|---|---|
-| `ANTHROPIC_API_KEY` | Anthropic provider. |
-| `OPENAI_API_KEY` | OpenAI provider. |
-| `OPENROUTER_API_KEY` | OpenRouter provider. |
-| `VERCEL_TOKEN` | Deploy phase через `vercel --token`. |
-| `DEVAGENT_PROVIDER` | Override provider. |
-| `DEVAGENT_MODEL` | Override model. |
-| `DEVAGENT_BUDGET_RATIO` | Context budget ratio. |
-
-## Design Decisions
-
-| Решение | Почему |
-|---|---|
-| Канонический формат сообщений | История переносима между Anthropic, OpenAI и OpenRouter. |
-| Externalized state | `STATE.md` переживает compaction и доступен пользователю. |
-| Progressive skill disclosure | В prompt входит индекс, полный skill грузится только через `load_skill`. |
-| Inspectable memory | Lessons и learned skills это plain markdown в `~/.devagent/`. |
-| Docker sandbox | Установка проще, а bash-команды агента исполняются в контейнере. |
-
-## Architecture
+1. **Discovery** asks focused product questions and writes the brief.
+2. **Planning** writes the file map, schema notes, and TODO list to `STATE.md`.
+3. **Coding** takes one TODO at a time, edits files, and runs verification.
+4. **Deploy** uses the Vercel skill and checks the production URL.
+5. **Marketing** generates README structure, Reddit launch copy, and landing copy.
 
 ```text
-user / slash command
-        |
-        v
-CLI preflight -> config + STATE.md + skills index + lessons
-        |
-        v
+user input
+  ↓
+phase prompt + STATE.md + skill index + lessons
+  ↓
 ContextManager.prepare(history)
-        |
-        v
+  ↓
 Provider.complete(system, canonical messages, tool specs)
-        |
-        v
-AgentLoop logs assistant message -> ToolRegistry executes calls
-        |
-        v
-full tool output -> .devagent/artifacts -> truncated result to model
-        |
-        v
+  ↓
+AgentLoop logs assistant message
+  ↓
+ToolRegistry executes calls through the selected backend
+  ↓
+full tool output → .devagent/artifacts/
+truncated result → model context
+  ↓
 STATE.md / session.jsonl / lessons.md
 ```
 
-## Development
+## Documentation
 
-```bash
-./setup-dev.sh
-UV_CACHE_DIR=.uv-cache uv run pytest
-UV_CACHE_DIR=.uv-cache uv run ruff check devagent tests
-UV_CACHE_DIR=.uv-cache uv run mypy devagent
-```
+| Section | What's Covered |
+|---|---|
+| [Quickstart](docs/quickstart.md) | Setup, first project, first run. |
+| [Configuration](docs/configuration.md) | Config precedence, env variables, credentials, recommendations. |
+| [CLI Reference](docs/cli-reference.md) | Commands, slash commands, setup, model, tools, backend. |
+| [Skills System](docs/skills.md) | Builtin skills, learned skills, scoring, progressive disclosure. |
+| [Memory](docs/memory.md) | Lessons, skill synthesis, markdown memory files. |
+| [Architecture](docs/architecture.md) | Canonical messages, context manager, loop, providers. |
+| [Docker & Sandbox](docs/docker.md) | Native CLI plus Docker execution backend. |
+| [Contributing](CONTRIBUTING.md) | Development setup and PR conventions. |
+
+## Design Decisions
+
+**Canonical message format.** Session history is stored only as internal
+dataclasses. Anthropic/OpenAI/OpenRouter formatting happens at the API boundary,
+which makes mid-session provider switching possible.
+
+**`STATE.md` over chat memory.** Long-running project state lives in
+`.devagent/STATE.md`, not in fragile conversational memory. The model sees it
+every turn and updates it after meaningful work.
+
+**Progressive skill disclosure.** The system prompt gets only the skill index.
+Full skill bodies are loaded on demand with `load_skill`, keeping context small
+until a procedure is actually needed.
+
+**Inspectable markdown memory.** Lessons and learned skills are normal markdown
+files under `~/.devagent/`. Users can inspect, edit, delete, and version them
+without a database or opaque embedding store.
+
+**Sandbox by default.** The CLI runs natively for a clean terminal experience,
+while agent-owned shell commands can run in a Docker sandbox container. The
+local backend exists for speed and constrained environments.
 
 ## Contributing
 
-Коммиты держи маленькими и тематическими, в conventional commits: `fix(cli): ...`, `test(onboarding): ...`, `docs(readme): ...`.
+```bash
+git clone https://github.com/Muhammadcell/devagent.git
+cd devagent
+./setup-dev.sh
+./devagent --help
+```
+
+Manual path:
+
+```bash
+uv sync --all-groups --frozen
+.venv/bin/ruff check devagent tests
+.venv/bin/mypy --no-incremental --no-sqlite-cache devagent
+.venv/bin/pytest
+```
+
+Use conventional commits such as `feat(cli): add backend selector`,
+`test(tools): cover web fetch ssrf guard`, or `docs(readme): refresh setup`.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+Built by the DevAgent contributors:
+[Muhammadcell](https://github.com/Muhammadcell),
+[Ha1zyy](https://github.com/Ha1zyy), and
+[abdulluda3](https://github.com/abdulluda3).

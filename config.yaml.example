@@ -5,6 +5,10 @@ provider: anthropic              # anthropic | openai | openrouter
 model: claude-sonnet-4-6
 api_key_env: ANTHROPIC_API_KEY
 base_url: null                   # optional proxy/self-hosted base URL
+backend: docker                  # docker | local
+sandbox:
+  image: devagent-sandbox:latest
+  network: bridge                # bridge | none
 summarizer_model: null           # null = use main model
 budget_ratio: 0.7
 max_turns: 200
@@ -15,6 +19,17 @@ phases:
     enabled: true
     vercel_token_env: VERCEL_TOKEN
   marketing:
+    enabled: true
+
+tools:
+  web_search:
+    enabled: true
+    provider: tavily             # tavily | brave | searxng
+    max_results: 5
+    searxng_url: null
+  web_fetch:
+    enabled: false
+  deploy:
     enabled: true
 
 ui:
