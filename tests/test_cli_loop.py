@@ -8,8 +8,18 @@ from typer.testing import CliRunner
 from pilot_agent.agent.context import ContextManager, StaticSummaryProvider
 from pilot_agent.agent.loop import AgentLoop, restore_phase_from_session
 from pilot_agent.agent.phases import PHASES, PIPELINE
-from pilot_agent.agent.prompts import COMMON_PREFIX
-from pilot_agent.agent.state import init_project_state, read_session_messages, write_session_record
+from pilot_agent.agent.prompts import (
+    COMMON_PREFIX,
+    acceptance_prompt,
+    coding_prompt,
+    marketing_prompt,
+)
+from pilot_agent.agent.state import (
+    append_reentry_request,
+    init_project_state,
+    read_session_messages,
+    write_session_record,
+)
 from pilot_agent.agent.types import CompletionResponse, Message, Role, ToolCall, ToolSpec
 from pilot_agent.cli import app
 from pilot_agent.providers.base import Provider
@@ -95,12 +105,27 @@ class SkillBackend:
 
 
 def test_phase_pipeline_and_tools_exact() -> None:
-    assert PIPELINE == ["discovery", "planning", "coding", "deploy", "marketing"]
+    assert PIPELINE == ["discovery", "planning", "coding", "acceptance", "deploy", "marketing"]
     assert PHASES["discovery"].tools == ["ask_user", "web_search", "complete_phase"]
     assert "web_search" in PHASES["planning"].tools
     assert "web_fetch" in PHASES["planning"].tools
     assert "web_search" in PHASES["coding"].tools
     assert "web_fetch" in PHASES["coding"].tools
+    assert PHASES["coding"].next == "acceptance"
+    assert PHASES["acceptance"].next == "deploy"
+    assert "web_search" not in PHASES["acceptance"].tools
+    assert "web_fetch" not in PHASES["acceptance"].tools
+    assert PHASES["acceptance"].tools == [
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_files",
+        "bash",
+        "run_and_check",
+        "load_skill",
+        "ask_user",
+        "complete_phase",
+    ]
     assert "web_search" not in PHASES["deploy"].tools
     assert "web_fetch" not in PHASES["deploy"].tools
     assert "web_search" not in PHASES["marketing"].tools
@@ -121,6 +146,10 @@ def test_prompts_include_required_common_rules() -> None:
     assert "Update .pilot-agent/STATE.md" in COMMON_PREFIX
     assert "Call load_skill(name)" in COMMON_PREFIX
     assert "read_file existing files" in COMMON_PREFIX
+    assert "acceptance phase" in coding_prompt()
+    assert "local-acceptance" in acceptance_prompt()
+    assert "pilot-agent sandbox expose <port>" in acceptance_prompt()
+    assert "launch-posts" in marketing_prompt()
 
 
 def test_loop_turn_complete_phase_logs_and_advances(tmp_path: Path) -> None:
@@ -189,6 +218,23 @@ def test_session_restore_phase(tmp_path: Path) -> None:
     write_session_record(tmp_path, {"_type": "phase_change", "from": "discovery", "to": "planning"})
 
     assert restore_phase_from_session(tmp_path) == "planning"
+
+
+def test_session_restore_completed_pipeline(tmp_path: Path) -> None:
+    init_project_state(tmp_path, "Demo")
+    write_session_record(tmp_path, {"_type": "phase_change", "from": "marketing", "to": None})
+
+    assert restore_phase_from_session(tmp_path) is None
+
+
+def test_reentry_request_updates_state(tmp_path: Path) -> None:
+    init_project_state(tmp_path, "Demo")
+
+    append_reentry_request(tmp_path, kind="bugfix", description="Login form returns 500")
+
+    state = (tmp_path / ".pilot-agent" / "STATE.md").read_text(encoding="utf-8")
+    assert "- [ ] Bug fix: reproduce and fix Login form returns 500" in state
+    assert "- Login form returns 500" in state
 
 
 def test_slash_skip_advances_phase(tmp_path: Path) -> None:

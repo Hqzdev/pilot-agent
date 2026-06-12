@@ -20,11 +20,14 @@ from pilot_agent.agent.context import ContextManager
 from pilot_agent.agent.loop import AgentLoop, restore_phase_from_session
 from pilot_agent.agent.phases import PHASES
 from pilot_agent.agent.state import (
+    append_reentry_request,
     init_project_state,
     read_session_messages,
     session_path,
     state_path,
+    write_session_record,
 )
+from pilot_agent.agent.types import Message, Role
 from pilot_agent.backends import ExecutionBackend, backend_from_config
 from pilot_agent.cli.auth import list_models, provider_key_env
 from pilot_agent.cli.doctor import checks_to_json, has_failures, run_doctor_checks
@@ -207,7 +210,7 @@ def run_loop(cfg: PilotAgentConfig) -> None:
             provider=cfg.provider,
             model=cfg.model,
             project_root=project_root,
-            phase=phase_name,
+            phase=phase_name or "complete",
             lessons_count=_lesson_count(default_home()),
             skills_count=len(skill_names),
             resumed=bool(history),
@@ -285,6 +288,8 @@ def _ensure_project_for_run(*, resume_mode: bool = False) -> None:
     if not _interactive() or not session.exists() or session.stat().st_size == 0:
         return
     phase = restore_phase_from_session(root)
+    if phase is None:
+        return
     choice = PilotAgentInput().prompt(
         f"Found an unfinished session (phase {phase}). [R]esume / [N]ew / [A]bort?",
         choices=["R", "N", "A", "r", "n", "a"],
@@ -297,6 +302,36 @@ def _ensure_project_for_run(*, resume_mode: bool = False) -> None:
         session.replace(backup)
         session.touch()
         emit(f"previous session moved to {backup}")
+
+
+def _handle_reentry_for_completed_project() -> None:
+    root = Path(".").resolve()
+    if restore_phase_from_session(root) is not None or not _interactive():
+        return
+    prompt = PilotAgentInput(history_path=default_home() / "input_history")
+    choice = prompt.ask_int(
+        "Pipeline is complete. Choose next work: 1. Improvement  2. Bug fix",
+        default=1,
+        choices=["1", "2"],
+    )
+    kind = "bugfix" if choice == 2 else "improvement"
+    description = prompt.prompt(
+        "Describe the bug to reproduce" if kind == "bugfix" else "Describe the improvement",
+        default="",
+    )
+    if not description.strip():
+        emit("No re-entry request provided; project remains complete")
+        raise typer.Exit(0)
+    append_reentry_request(root, kind=kind, description=description)
+    user_content = (
+        f"Re-entry bug fix request: {description.strip()}"
+        if kind == "bugfix"
+        else f"Re-entry improvement request: {description.strip()}"
+    )
+    write_session_record(root, {"_type": "reentry", "kind": kind, "description": description})
+    write_session_record(root, Message(role=Role.USER, content=user_content, phase="coding"))
+    write_session_record(root, {"_type": "phase_change", "from": None, "to": "coding"})
+    emit(f"added {kind} request to STATE.md and resumed coding")
 
 
 @app.command()
@@ -583,7 +618,7 @@ def status() -> None:
     todo_done, todo_total = _todo_progress(state_path(root))
     turns, token_total = _session_stats(session_path(root))
     table = simple_table("field", "value")
-    table.add_row("phase", phase)
+    table.add_row("phase", phase or "complete")
     table.add_row("todo", f"{todo_done}/{todo_total}")
     table.add_row("turns", str(turns))
     table.add_row("tokens", str(token_total))
@@ -599,6 +634,7 @@ def run(
     cfg = load_config_or_exit(provider=provider, model=model)
     resolve_key_or_exit(cfg)
     _ensure_project_for_run()
+    _handle_reentry_for_completed_project()
     run_loop(cfg)
 
 

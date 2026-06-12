@@ -32,7 +32,23 @@ def coding_prompt() -> str:
         COMMON_PREFIX
         + f"\n\nCoding phase: take one {TASKS_WORD} at a time, write code, run run_and_check, "
         f"fix failures from stderr, and only then move to the next task. After pass, update "
-        f"Done/{TASKS_WORD} in STATE.md. After five failed fix attempts, ask_user."
+        f"Done/{TASKS_WORD} in STATE.md. After five failed fix attempts, ask_user. "
+        "Do not move to deploy from coding; the acceptance phase must let the user inspect "
+        "the working app first."
+    )
+
+
+def acceptance_prompt() -> str:
+    return (
+        COMMON_PREFIX
+        + "\n\nAcceptance phase: load local-acceptance before starting. Build a concrete manual "
+        "checklist from the Done section in STATE.md where every item says what to open, what "
+        "to do, and what should happen. Start the app with run_and_check. If the app runs in "
+        "the Docker backend and the user needs browser access, tell them the exact command "
+        "pilot-agent sandbox expose <port>. Ask_user for ok or issues. If the user reports "
+        f"issues, turn them into confirmed {TASKS_WORD} items in STATE.md and fix them before "
+        "asking again. Call complete_phase(summary) only after the user explicitly accepts the "
+        "local build."
     )
 
 
@@ -47,6 +63,6 @@ def deploy_prompt() -> str:
 def marketing_prompt() -> str:
     return (
         COMMON_PREFIX
-        + "\n\nMarketing phase: load readme-structure and reddit-launch-post skills. Produce "
+        + "\n\nMarketing phase: load readme-structure and launch-posts skills. Produce "
         "README and marketing/landing.md, then complete_phase(summary)."
     )
