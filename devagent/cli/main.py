@@ -15,18 +15,27 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from rich.console import Console
-from rich.prompt import Confirm, Prompt
-from rich.table import Table
 
 from devagent.agent.context import ContextManager
 from devagent.agent.loop import AgentLoop, restore_phase_from_session
 from devagent.agent.phases import PHASES
 from devagent.agent.state import init_project_state, read_session_messages, session_path, state_path
+from devagent.backends import ExecutionBackend, backend_from_config
 from devagent.cli.auth import list_models, provider_key_env
 from devagent.cli.doctor import checks_to_json, has_failures, run_doctor_checks
 from devagent.cli.setup_wizard import run_setup_wizard
+from devagent.cli.ui import UI
+from devagent.cli.ui.banner import BannerState, render_banner
+from devagent.cli.ui.components import create_console, simple_table
+from devagent.cli.ui.input import DevAgentInput
+from devagent.config.credentials import (
+    get_credential,
+    mask_secret,
+    service_env_var,
+    set_credential,
+)
 from devagent.config.schema import (
+    RECOMMENDED,
     DevAgentConfig,
     config_value,
     default_home,
@@ -36,7 +45,7 @@ from devagent.config.schema import (
     update_config_values,
     user_config_path,
 )
-from devagent.providers import Provider, from_config
+from devagent.providers.base import Provider, from_config
 from devagent.skills.registry import SkillRegistry
 from devagent.tools.ask_user import AskUserTool
 from devagent.tools.base import ToolRegistry
@@ -44,18 +53,25 @@ from devagent.tools.bash import BashTool
 from devagent.tools.file_ops import EditFileTool, ListFilesTool, ReadFileTool, WriteFileTool
 from devagent.tools.phase_tools import CompletePhaseTool
 from devagent.tools.run_check import RunAndCheckTool
+from devagent.tools.search_providers import provider_from_config
 from devagent.tools.skill_tools import LoadSkillTool, SaveSkillTool
+from devagent.tools.web_fetch import WebFetchTool
+from devagent.tools.web_search import WebSearchTool
 
 app = typer.Typer(help="DevAgent local MVP agent.")
 skills_app = typer.Typer(help="Manage skills.")
 config_app = typer.Typer(help="Manage configuration.")
 lessons_app = typer.Typer(help="Manage lessons.")
 sessions_app = typer.Typer(help="Manage sessions.")
+auth_app = typer.Typer(help="Manage credentials.")
+sandbox_app = typer.Typer(help="Manage Docker sandbox image and containers.")
 app.add_typer(skills_app, name="skills")
 app.add_typer(config_app, name="config")
 app.add_typer(lessons_app, name="lessons")
 app.add_typer(sessions_app, name="sessions")
-console = Console()
+app.add_typer(auth_app, name="auth")
+app.add_typer(sandbox_app, name="sandbox")
+console = create_console()
 INIT_PATH_ARGUMENT = typer.Argument(Path("."), help="Project path to initialize.")
 GLOBAL_PROVIDER: str | None = None
 GLOBAL_MODEL: str | None = None
@@ -85,6 +101,7 @@ def root_options(
         os.environ["DEVAGENT_VERBOSE"] = "1"
     if no_color:
         os.environ["NO_COLOR"] = "1"
+        console.no_color = True
 
 
 def load_config_or_exit(provider: str | None = None, model: str | None = None) -> DevAgentConfig:
@@ -108,7 +125,7 @@ def resolve_key_or_exit(cfg: DevAgentConfig) -> None:
 
 
 def render_config(cfg: DevAgentConfig) -> None:
-    table = Table("key", "value", "source")
+    table = simple_table("key", "value", "source")
     flat = flatten_config(cfg)
     for key in sorted(flat):
         value = flat[key]
@@ -124,21 +141,39 @@ def build_skill_registry() -> SkillRegistry:
     return SkillRegistry([builtin, home / "skills"], home=home)
 
 
-def build_tool_registry(project_root: Path, skills: SkillRegistry, timeout_s: int) -> ToolRegistry:
+def build_tool_registry(
+    project_root: Path,
+    skills: SkillRegistry,
+    cfg: DevAgentConfig,
+    backend: ExecutionBackend | None = None,
+) -> ToolRegistry:
+    backend = backend or backend_from_config(cfg, project_root)
     tools = [
         AskUserTool(),
-        BashTool(project_root),
+        BashTool(project_root, backend=backend),
         ReadFileTool(project_root),
         WriteFileTool(project_root),
         EditFileTool(project_root),
         ListFilesTool(project_root),
-        RunAndCheckTool(project_root),
+        RunAndCheckTool(project_root, backend=backend),
         LoadSkillTool(skills),
         SaveSkillTool(skills),
         CompletePhaseTool(),
     ]
+    if cfg.tools.web_search.enabled:
+        try:
+            search = provider_from_config(
+                cfg.tools.web_search.provider,
+                api_key=get_credential(cfg.tools.web_search.provider, default_home()),
+                searxng_url=cfg.tools.web_search.searxng_url,
+            )
+            tools.append(WebSearchTool(search, cfg.tools.web_search.max_results))
+        except ValueError:
+            pass
+    if cfg.tools.web_fetch.enabled:
+        tools.append(WebFetchTool())
     for tool in tools:
-        tool.timeout_s = timeout_s
+        tool.timeout_s = cfg.tool_timeout_s
     return ToolRegistry(tools, project_root)
 
 
@@ -147,21 +182,48 @@ def run_loop(cfg: DevAgentConfig) -> None:
     init_project_state(project_root)
     skills = build_skill_registry()
     provider = from_config(cfg)
-    registry = build_tool_registry(project_root, skills, cfg.tool_timeout_s)
+    backend = backend_from_config(cfg, project_root)
+    registry = build_tool_registry(project_root, skills, cfg, backend=backend)
     session_log = project_root / ".devagent" / "session.jsonl"
     phase_name = restore_phase_from_session(project_root)
     history = read_session_messages(project_root)
-    loop = AgentLoop(
-        project_root=project_root,
-        provider=provider,
-        registry=registry,
-        ctx=ContextManager(provider, cfg.budget_ratio, session_log=session_log),
-        skills=skills,
-        phase_name=phase_name,
-        history=history,
-        model_switcher=_make_model_switcher(cfg),
+    skill_names = sorted(skills.records)
+    ui = UI(
+        console=console,
+        color=cfg.ui.color,
+        show_status=cfg.ui.show_token_counter,
+        history_path=default_home() / "input_history",
+        skill_names=skill_names,
     )
-    loop.run(max_turns=cfg.max_turns)
+    render_banner(
+        console,
+        BannerState(
+            version=_package_version(),
+            provider=cfg.provider,
+            model=cfg.model,
+            project_root=project_root,
+            phase=phase_name,
+            lessons_count=_lesson_count(default_home()),
+            skills_count=len(skill_names),
+            resumed=bool(history),
+            turns=len(history),
+        ),
+    )
+    try:
+        loop = AgentLoop(
+            project_root=project_root,
+            provider=provider,
+            registry=registry,
+            ctx=ContextManager(provider, cfg.budget_ratio, session_log=session_log),
+            skills=skills,
+            ui=ui,
+            phase_name=phase_name,
+            history=history,
+            model_switcher=_make_model_switcher(cfg),
+        )
+        loop.run(max_turns=cfg.max_turns)
+    finally:
+        backend.cleanup()
 
 
 def _make_model_switcher(cfg: DevAgentConfig) -> Callable[[str], Provider]:
@@ -194,7 +256,7 @@ def _ensure_config_for_run() -> None:
         return
     if not _interactive():
         return
-    if Confirm.ask("Конфиг не найден. Запустить devagent setup?", default=True):
+    if DevAgentInput().confirm("Конфиг не найден. Запустить devagent setup?", default=True):
         run_setup_wizard(config_path=GLOBAL_CONFIG_PATH)
         return
     emit("Run: devagent setup")
@@ -204,7 +266,7 @@ def _ensure_config_for_run() -> None:
 def _ensure_project_for_run(*, resume_mode: bool = False) -> None:
     root = Path(".").resolve()
     if not (root / ".devagent").exists():
-        if _interactive() and Confirm.ask(
+        if _interactive() and DevAgentInput().confirm(
             f"Проект не инициализирован. Запустить devagent init здесь ({root})?",
             default=True,
         ):
@@ -218,7 +280,7 @@ def _ensure_project_for_run(*, resume_mode: bool = False) -> None:
     if not _interactive() or not session.exists() or session.stat().st_size == 0:
         return
     phase = restore_phase_from_session(root)
-    choice = Prompt.ask(
+    choice = DevAgentInput().prompt(
         f"Найдена незавершённая сессия (фаза {phase}). [R]esume / [N]ew / [A]bort?",
         choices=["R", "N", "A", "r", "n", "a"],
         default="R",
@@ -262,7 +324,7 @@ def doctor(json_output: bool = typer.Option(False, "--json")) -> None:
     if json_output:
         typer.echo(checks_to_json(checks))
     else:
-        table = Table("status", "check", "details", "fix")
+        table = simple_table("status", "check", "details", "fix")
         symbols = {"pass": "✓", "warn": "⚠", "fail": "✗"}
         for check in checks:
             table.add_row(symbols[check.status], check.name, check.details, check.fix or "")
@@ -275,10 +337,7 @@ def doctor(json_output: bool = typer.Option(False, "--json")) -> None:
 
 @app.command()
 def version() -> None:
-    try:
-        package_version = metadata.version("devagent")
-    except metadata.PackageNotFoundError:
-        package_version = "0.1.0"
+    package_version = _package_version()
     commit = _git_commit()
     emit(
         f"devagent {package_version}\n"
@@ -347,7 +406,7 @@ def model_command(
 
 def render_model_table(provider_name: str) -> None:
     api_key = os.environ.get(provider_key_env(provider_name))
-    table = Table("provider", "model", "context", "tools")
+    table = simple_table("provider", "model", "context", "tools")
     for model in list_models(provider_name, api_key=api_key):
         table.add_row(
             model.provider,
@@ -356,6 +415,157 @@ def render_model_table(provider_name: str) -> None:
             str(model.supports_tools).lower(),
         )
     emit(table)
+
+
+@app.command("backend")
+def backend_command(target: str | None = typer.Argument(None)) -> None:
+    cfg = load_config_or_exit()
+    if target is None:
+        table = simple_table("setting", "value", "source")
+        value = _with_recommendation("backend", cfg.backend)
+        table.add_row("backend", value, cfg.sources.get("backend", "defaults"))
+        table.add_row(
+            "sandbox.image",
+            cfg.sandbox.image,
+            cfg.sources.get("sandbox.image", "defaults"),
+        )
+        table.add_row(
+            "sandbox.network",
+            cfg.sandbox.network,
+            cfg.sources.get("sandbox.network", "defaults"),
+        )
+        emit(table)
+        emit("Switch with: devagent backend docker|local")
+        return
+    if target not in {"docker", "local"}:
+        emit("Error: backend must be docker or local")
+        raise typer.Exit(1)
+    update_config_values(_config_write_path(), {"backend": target})
+    emit(f"✓ backend {target}")
+
+
+@app.command("tools")
+def tools_command(
+    tool: str | None = typer.Argument(None),
+    enable: bool = typer.Option(False, "--enable"),
+    disable: bool = typer.Option(False, "--disable"),
+    provider: str | None = typer.Option(None, "--provider"),
+) -> None:
+    cfg = load_config_or_exit()
+    if tool is None:
+        render_tools_table(cfg)
+        emit("Change with: devagent tools <web_search|web_fetch|deploy> --enable|--disable")
+        return
+    if tool not in {"web_search", "web_fetch", "deploy"}:
+        emit("Error: unknown tool. Use web_search, web_fetch, or deploy")
+        raise typer.Exit(1)
+    if enable and disable:
+        emit("Error: choose only one of --enable or --disable")
+        raise typer.Exit(1)
+    updates: dict[str, object] = {}
+    if enable or disable:
+        updates[f"tools.{tool}.enabled"] = enable
+    if provider is not None:
+        if tool != "web_search":
+            emit("Error: --provider applies only to web_search")
+            raise typer.Exit(1)
+        updates["tools.web_search.provider"] = provider
+    if updates:
+        update_config_values(_config_write_path(), updates)
+        cfg = load_config_or_exit()
+    render_tools_table(cfg)
+
+
+def render_tools_table(cfg: DevAgentConfig) -> None:
+    home = default_home()
+    table = simple_table("tool", "state", "configuration")
+    table.add_row("bash/file_ops/run_and_check/ask_user/skills", "✓ core", "always enabled")
+    search_provider = cfg.tools.web_search.provider
+    key = get_credential(search_provider, home)
+    search_state = "✓ enabled" if cfg.tools.web_search.enabled and key else "⚠ needs key"
+    if not cfg.tools.web_search.enabled:
+        search_state = "✗ disabled"
+    table.add_row(
+        "web_search",
+        search_state,
+        _with_recommendation("tools.web_search.provider", search_provider),
+    )
+    table.add_row(
+        "web_fetch",
+        "✓ enabled" if cfg.tools.web_fetch.enabled else "✗ disabled",
+        "SSRF checks",
+    )
+    vercel_key = get_credential("vercel", home)
+    deploy_state = (
+        "✓ enabled" if cfg.tools.deploy.enabled or cfg.phases.deploy.enabled else "✗ disabled"
+    )
+    table.add_row(
+        "deploy",
+        deploy_state,
+        "vercel token " + ("set" if vercel_key else "from env/ask later"),
+    )
+    emit(table)
+
+
+@app.command("settings")
+def settings() -> None:
+    cfg = load_config_or_exit()
+    home = default_home()
+    table = simple_table("section", "setting", "value", "source")
+    key = get_credential(cfg.provider, home) or os.environ.get(cfg.api_key_env)
+    table.add_row(
+        "provider",
+        "model",
+        f"{cfg.provider}:{cfg.model}",
+        cfg.sources.get("model", "defaults"),
+    )
+    table.add_row("provider", "api key", mask_secret(key), "credentials/env")
+    table.add_row(
+        "execution",
+        "backend",
+        _with_recommendation("backend", cfg.backend),
+        cfg.sources.get("backend", "defaults"),
+    )
+    table.add_row(
+        "execution",
+        "sandbox",
+        f"{cfg.sandbox.image} · network {cfg.sandbox.network}",
+        "config",
+    )
+    search_key = get_credential(cfg.tools.web_search.provider, home)
+    table.add_row(
+        "tools",
+        "web_search",
+        f"{'✓' if cfg.tools.web_search.enabled else '✗'} {cfg.tools.web_search.provider} · "
+        f"{'key set' if search_key else 'key missing'}",
+        cfg.sources.get("tools.web_search.enabled", "defaults"),
+    )
+    table.add_row(
+        "tools",
+        "web_fetch",
+        "✓ enabled" if cfg.tools.web_fetch.enabled else "✗ disabled",
+        "config",
+    )
+    table.add_row(
+        "tools",
+        "deploy",
+        "✓ enabled" if cfg.tools.deploy.enabled else "✗ disabled",
+        "config",
+    )
+    lessons = _lesson_count(home)
+    skills = build_skill_registry()
+    learned = sum(1 for item in skills.records.values() if item.meta.source == "learned")
+    table.add_row(
+        "memory",
+        "summary",
+        f"lessons {lessons} · skills {len(skills.records)} ({learned} learned)",
+        "home",
+    )
+    emit(table)
+    emit(
+        "Change: devagent setup --reconfigure · devagent tools · "
+        "devagent backend · devagent auth set <name>"
+    )
 
 
 @app.command()
@@ -367,7 +577,7 @@ def status() -> None:
     phase = restore_phase_from_session(root)
     todo_done, todo_total = _todo_progress(state_path(root))
     turns, token_total = _session_stats(session_path(root))
-    table = Table("field", "value")
+    table = simple_table("field", "value")
     table.add_row("phase", phase)
     table.add_row("todo", f"{todo_done}/{todo_total}")
     table.add_row("turns", str(turns))
@@ -442,9 +652,71 @@ def config_edit() -> None:
     subprocess.run([editor, str(path)], check=False)
 
 
+@auth_app.command("set")
+def auth_set(service: str, value: str | None = typer.Argument(None)) -> None:
+    home = default_home()
+    secret = value
+    if secret is None:
+        secret = DevAgentInput(history_path=home / "input_history").prompt(
+            f"Key for {service} ({service_env_var(service)})",
+            password=True,
+            default="",
+        )
+    if not secret:
+        emit(f"skipped {service}; no key stored")
+        raise typer.Exit(1)
+    path = set_credential(service, secret, home)
+    emit(f"✓ stored {service} credential in {path}")
+
+
+@sandbox_app.command("build")
+def sandbox_build(
+    image: str = typer.Option("devagent-sandbox:latest", "--image"),
+) -> None:
+    result = subprocess.run(
+        ["docker", "build", "-f", "Dockerfile.sandbox", "-t", image, "."],
+        text=True,
+        check=False,
+    )
+    raise typer.Exit(result.returncode)
+
+
+@sandbox_app.command("clean")
+def sandbox_clean() -> None:
+    listed = subprocess.run(
+        [
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            "name=devagent-sbx-",
+            "--format",
+            "{{.Names}}",
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    names = [line.strip() for line in listed.stdout.splitlines() if line.strip()]
+    if not names:
+        emit("no sandbox containers")
+        return
+    subprocess.run(["docker", "rm", "-f", *names], check=False)
+    emit(f"removed {len(names)} sandbox containers")
+
+
+@sandbox_app.command("expose")
+def sandbox_expose(port: int) -> None:
+    emit(
+        "Manual port exposure requires recreating the session sandbox. "
+        f"Use Docker directly for now: docker run -p {port}:{port} ..."
+    )
+
+
 @skills_app.command("list")
 def skills_list() -> None:
-    table = Table("name", "source", "success/failure", "deprecated")
+    table = simple_table("name", "source", "success/failure", "deprecated")
     for record in sorted(build_skill_registry().records.values(), key=lambda item: item.meta.name):
         meta = record.meta
         table.add_row(
@@ -519,7 +791,7 @@ def lessons_clear(force: bool = typer.Option(False, "--yes", "-y")) -> None:
 @sessions_app.command("list")
 def sessions_list() -> None:
     root = Path(".").resolve()
-    table = Table("project", "phase", "turns", "status", "path")
+    table = simple_table("project", "phase", "turns", "status", "path")
     session = session_path(root)
     if session.exists():
         phase = restore_phase_from_session(root)
@@ -540,8 +812,33 @@ def _git_commit(cwd: Path | None = None) -> str:
     return result.stdout.strip() or "unknown"
 
 
+def _package_version() -> str:
+    try:
+        return metadata.version("devagent")
+    except metadata.PackageNotFoundError:
+        return "0.1.0"
+
+
+def _lesson_count(home: Path) -> int:
+    path = home / "lessons.md"
+    if not path.exists():
+        return 0
+    return sum(
+        1
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("## ")
+    )
+
+
 def _config_write_path() -> Path:
     return GLOBAL_CONFIG_PATH or user_config_path()
+
+
+def _with_recommendation(key: str, value: str) -> str:
+    recommended = RECOMMENDED.get(key)
+    if recommended is None or value == recommended["value"]:
+        return f"{value} ✓"
+    return f"{value} (recommended: {recommended['value']})"
 
 
 def _todo_progress(path: Path) -> tuple[int, int]:

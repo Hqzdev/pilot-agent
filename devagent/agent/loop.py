@@ -2,26 +2,18 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from operator import methodcaller
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
-
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from devagent.agent.context import ContextManager, build_system_prompt
 from devagent.agent.memory import Memory, SkillOutcomeRecorder
 from devagent.agent.phases import PHASES, Phase
 from devagent.agent.state import read_state, write_session_record
 from devagent.agent.types import Message, Role, ToolCall, ToolResult
+from devagent.cli.ui import UI
 from devagent.providers.base import Provider
 from devagent.tools.base import ToolRegistry
-
-
-def emit(console: Console, *objects: object) -> None:
-    methodcaller("print", *objects)(console)
 
 
 class SkillIndex(Protocol):
@@ -34,26 +26,6 @@ class EmptySkills:
         return ""
 
 
-@dataclass
-class RichUI:
-    console: Console = field(default_factory=Console)
-
-    def render(self, message: Message) -> None:
-        if message.content:
-            emit(self.console, message.content)
-        for call in message.tool_calls:
-            emit(self.console, f"⚙ {call.name}: {call.arguments}")
-
-    def render_phase(self, phase: Phase) -> None:
-        emit(self.console, Panel(f"Current phase: {phase.name}", title="DevAgent"))
-
-    def prompt_user(self) -> str:
-        return self.console.input("> ")
-
-    def api_spinner(self) -> Progress:
-        return Progress(SpinnerColumn(), TextColumn("Calling provider..."), console=self.console)
-
-
 class AgentLoop:
     def __init__(
         self,
@@ -64,7 +36,7 @@ class AgentLoop:
         ctx: ContextManager,
         skills: SkillIndex | None = None,
         memory: Memory | None = None,
-        ui: RichUI | None = None,
+        ui: UI | None = None,
         history: list[Message] | None = None,
         phase_name: str = "discovery",
         stack: list[str] | None = None,
@@ -84,7 +56,7 @@ class AgentLoop:
             summarizer=self._summarize_lesson,
             skill_recorder=recorder,
         )
-        self.ui = ui or RichUI()
+        self.ui = ui or UI()
         self.history = history or []
         self.memory.end_of_session(self.history)
         self.phase: Phase | None = PHASES[phase_name]
@@ -94,8 +66,24 @@ class AgentLoop:
 
     def run(self, max_turns: int = 200) -> None:
         turns = 0
+        interrupts = 0
         while self.phase is not None and turns < max_turns:
-            self.run_turn()
+            try:
+                self.run_turn()
+                interrupts = 0
+            except KeyboardInterrupt:
+                interrupts += 1
+                if interrupts >= 2:
+                    write_session_record(
+                        self.project_root,
+                        {"_type": "interrupt", "count": interrupts},
+                    )
+                    self.ui.warning("interrupted twice; saved session and exiting")
+                    break
+                self.ui.warning(
+                    "interrupted - введи новое указание или /quit; "
+                    "повторный Ctrl+C завершит сессию"
+                )
             turns += 1
 
     def run_turn(self) -> None:
@@ -124,8 +112,10 @@ class AgentLoop:
                 if call.name == "complete_phase":
                     results.append(self.advance_phase(call))
                     continue
+                timer = self.ui.tool_timer(call)
                 result = self.registry.execute(call)
                 self.memory.observe(call, result)
+                self.ui.render_tool_result(call, result, elapsed_s=timer.elapsed())
                 if call.name == "load_skill" and not result.is_error:
                     skill_name = str(call.arguments.get("name", ""))
                     self.loaded_skills.setdefault(phase.name, set()).add(skill_name)
@@ -152,7 +142,7 @@ class AgentLoop:
     def handle_slash_command(self, raw: str) -> bool:
         command, _, arg = raw.partition(" ")
         if command == "/help":
-            self.ui.console.print(
+            self.ui.notice(
                 "/model <provider>:<model>\n"
                 "/skip\n"
                 "/compact\n"
@@ -164,16 +154,16 @@ class AgentLoop:
             )
         elif command == "/model":
             if not arg:
-                self.ui.console.print("Usage: /model <provider>:<model>")
+                self.ui.warning("Usage: /model <provider>:<model>")
                 return True
             if self.model_switcher is None:
-                self.ui.console.print("Model switching is not configured in this session")
+                self.ui.warning("Model switching is not configured in this session")
                 return True
             provider = self.model_switcher(arg)
             self.provider = provider
             self.ctx.replace_provider(provider)
             write_session_record(self.project_root, {"_type": "model_change", "target": arg})
-            self.ui.console.print(f"✓ model switched to {arg}")
+            self.ui.success(f"model switched to {arg}")
         elif command == "/skip":
             result = self.advance_phase(
                 ToolCall(
@@ -182,30 +172,30 @@ class AgentLoop:
                     arguments={"summary": "Skipped by user"},
                 )
             )
-            self.ui.console.print(result.content)
+            self.ui.notice(result.content)
         elif command == "/compact":
             self.history = self.ctx.compact("", self.history)
-            self.ui.console.print("context compacted")
+            self.ui.warning("context compacted")
         elif command == "/usage":
             tokens = self.provider.count_tokens("", self.history)
-            self.ui.console.print(f"tokens: {tokens}")
+            self.ui.notice(f"tokens: {tokens}")
         elif command == "/state":
-            self.ui.console.print(read_state(self.project_root))
+            self.ui.notice(read_state(self.project_root))
         elif command == "/skills":
             phase_name = self.phase.name if self.phase else "none"
-            self.ui.console.print(self.skills.index_for_prompt(phase_name, self.stack))
+            self.ui.notice(self.skills.index_for_prompt(phase_name, self.stack))
         elif command == "/undo":
             removed = self._undo_last_turn()
             write_session_record(self.project_root, {"_type": "undo", "removed_messages": removed})
-            self.ui.console.print(
+            self.ui.warning(
                 f"undid {removed} messages; file changes were not reverted"
             )
         elif command == "/quit":
             write_session_record(self.project_root, {"_type": "quit"})
             self.phase = None
-            self.ui.console.print("saved; exiting")
+            self.ui.notice("saved; exiting")
         else:
-            self.ui.console.print(f"Unknown slash command: {command}. Run /help")
+            self.ui.warning(f"Unknown slash command: {command}. Run /help")
         return True
 
     def _undo_last_turn(self) -> int:
@@ -245,6 +235,7 @@ class AgentLoop:
             {"_type": "phase_change", "from": current.name, "to": next_name},
         )
         self.phase = PHASES[next_name] if next_name is not None else None
+        self.ui.phase_transition(current.name, next_name, summary)
         return ToolResult(tool_call_id=call.id, content=f"completed phase {current.name}")
 
     def _summarize_lesson(self, prompt: str) -> str:

@@ -7,6 +7,33 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field
 
+RECOMMENDED: dict[str, dict[str, str]] = {
+    "provider": {
+        "value": "anthropic",
+        "label": "Anthropic",
+        "reason": "лучший tool calling для агентного CLI",
+    },
+    "backend": {
+        "value": "docker",
+        "label": "Docker-песочница",
+        "reason": "команды агента изолированы от твоей системы",
+    },
+    "tools.web_search.provider": {
+        "value": "tavily",
+        "label": "Tavily",
+        "reason": "готовый LLM-friendly ответ и щедрый free tier",
+    },
+}
+
+
+def recommended_value(key: str) -> str:
+    return RECOMMENDED[key]["value"]
+
+
+def recommended_label(key: str) -> str:
+    item = RECOMMENDED[key]
+    return f"{item['label']} (рекомендуется) — {item['reason']}"
+
 
 class DeployConfig(BaseModel):
     enabled: bool = True
@@ -27,6 +54,32 @@ class UIConfig(BaseModel):
     show_token_counter: bool = True
 
 
+class SandboxConfig(BaseModel):
+    image: str = "devagent-sandbox:latest"
+    network: Literal["bridge", "none"] = "bridge"
+
+
+class WebSearchConfig(BaseModel):
+    enabled: bool = True
+    provider: Literal["tavily", "brave", "searxng"] = "tavily"
+    max_results: int = 5
+    searxng_url: str | None = None
+
+
+class WebFetchConfig(BaseModel):
+    enabled: bool = False
+
+
+class DeployToolConfig(BaseModel):
+    enabled: bool = True
+
+
+class ToolsConfig(BaseModel):
+    web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
+    web_fetch: WebFetchConfig = Field(default_factory=WebFetchConfig)
+    deploy: DeployToolConfig = Field(default_factory=DeployToolConfig)
+
+
 class ProviderConfig(BaseModel):
     provider: str = "anthropic"
     model: str = "claude-sonnet-4-6"
@@ -44,11 +97,14 @@ class ProviderConfig(BaseModel):
 
 
 class DevAgentConfig(ProviderConfig):
+    backend: Literal["docker", "local"] = "docker"
+    sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     summarizer_model: str | None = None
     budget_ratio: float = 0.7
     max_turns: int = 200
     tool_timeout_s: int = 120
     phases: PhasesConfig = Field(default_factory=PhasesConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     sources: dict[str, str] = Field(default_factory=dict)
 
@@ -125,6 +181,9 @@ def _env_map() -> dict[str, str]:
         "model": "DEVAGENT_MODEL",
         "api_key_env": "DEVAGENT_API_KEY_ENV",
         "base_url": "DEVAGENT_BASE_URL",
+        "backend": "DEVAGENT_BACKEND",
+        "sandbox.image": "DEVAGENT_SANDBOX_IMAGE",
+        "sandbox.network": "DEVAGENT_SANDBOX_NETWORK",
         "summarizer_model": "DEVAGENT_SUMMARIZER_MODEL",
         "budget_ratio": "DEVAGENT_BUDGET_RATIO",
         "max_turns": "DEVAGENT_MAX_TURNS",
@@ -132,6 +191,12 @@ def _env_map() -> dict[str, str]:
         "phases.deploy.enabled": "DEVAGENT_PHASES_DEPLOY_ENABLED",
         "phases.deploy.vercel_token_env": "DEVAGENT_PHASES_DEPLOY_VERCEL_TOKEN_ENV",
         "phases.marketing.enabled": "DEVAGENT_PHASES_MARKETING_ENABLED",
+        "tools.web_search.enabled": "DEVAGENT_TOOLS_WEB_SEARCH_ENABLED",
+        "tools.web_search.provider": "DEVAGENT_TOOLS_WEB_SEARCH_PROVIDER",
+        "tools.web_search.max_results": "DEVAGENT_TOOLS_WEB_SEARCH_MAX_RESULTS",
+        "tools.web_search.searxng_url": "DEVAGENT_TOOLS_WEB_SEARCH_SEARXNG_URL",
+        "tools.web_fetch.enabled": "DEVAGENT_TOOLS_WEB_FETCH_ENABLED",
+        "tools.deploy.enabled": "DEVAGENT_TOOLS_DEPLOY_ENABLED",
         "ui.color": "DEVAGENT_UI_COLOR",
         "ui.show_token_counter": "DEVAGENT_UI_SHOW_TOKEN_COUNTER",
     }

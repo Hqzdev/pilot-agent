@@ -13,9 +13,11 @@ from pathlib import Path
 from typing import Literal
 
 from devagent.agent.state import session_path, state_path
+from devagent.backends import backend_from_config
 from devagent.cli.auth import STATIC_MODELS
-from devagent.config.schema import DevAgentConfig, default_home, load_config
-from devagent.providers.base import _REGISTRY
+from devagent.config.credentials import get_credential
+from devagent.config.schema import RECOMMENDED, DevAgentConfig, default_home, load_config
+from devagent.providers.base import _PROVIDER_MODULES
 from devagent.skills.registry import SkillRegistry
 
 CheckStatus = Literal["pass", "warn", "fail"]
@@ -46,10 +48,13 @@ def run_doctor_checks(
         lambda: check_provider_registered(root, agent_home),
         lambda: check_api_key(root, agent_home),
         lambda: check_model(root, agent_home),
+        lambda: check_backend(root, agent_home),
+        lambda: check_recommendations(root, agent_home),
         check_node,
         check_npm,
         check_vercel_cli,
         lambda: check_vercel_token(root, agent_home),
+        lambda: check_optional_tools(root, agent_home),
         lambda: check_lessons(agent_home),
         lambda: check_skills(agent_home),
         lambda: check_project(root),
@@ -132,9 +137,9 @@ def check_provider_registered(project_root: Path, home: Path) -> CheckResult:
         cfg = load_config(home=home, project_root=project_root)
     except Exception as exc:
         return CheckResult("fail", "provider registered", str(exc), "Run: devagent setup")
-    if cfg.provider in _REGISTRY:
+    if cfg.provider in _PROVIDER_MODULES:
         return CheckResult("pass", "provider registered", cfg.provider)
-    known = ", ".join(sorted(_REGISTRY))
+    known = ", ".join(sorted(_PROVIDER_MODULES))
     return CheckResult(
         "fail",
         "provider registered",
@@ -167,6 +172,32 @@ def check_model(project_root: Path, home: Path) -> CheckResult:
     if cfg.model in names:
         return CheckResult("pass", "model exists", cfg.model)
     return CheckResult("warn", "model exists", f"{cfg.model} not in local catalog")
+
+
+def check_backend(project_root: Path, home: Path) -> CheckResult:
+    cfg = _safe_config(project_root, home)
+    if cfg is None:
+        return CheckResult("fail", "backend", "config invalid", "Run: devagent setup")
+    backend = backend_from_config(cfg, project_root)
+    result = backend.healthcheck()
+    backend.cleanup()
+    return CheckResult(result.status, result.name, result.details, result.fix)
+
+
+def check_recommendations(project_root: Path, home: Path) -> CheckResult:
+    cfg = _safe_config(project_root, home)
+    if cfg is None:
+        return CheckResult("fail", "recommended settings", "config invalid", "Run: devagent setup")
+    deviations: list[str] = []
+    backend_rec = RECOMMENDED["backend"]["value"]
+    if cfg.backend != backend_rec:
+        deviations.append(f"backend={cfg.backend} (recommended: {backend_rec})")
+    search_rec = RECOMMENDED["tools.web_search.provider"]["value"]
+    if cfg.tools.web_search.provider != search_rec:
+        deviations.append(f"web_search={cfg.tools.web_search.provider} (recommended: {search_rec})")
+    if deviations:
+        return CheckResult("warn", "recommended settings", "; ".join(deviations))
+    return CheckResult("pass", "recommended settings", "using recommended defaults")
 
 
 def check_node() -> CheckResult:
@@ -203,6 +234,24 @@ def check_vercel_token(project_root: Path, home: Path) -> CheckResult:
         f"${env_name} not set",
         f"Run: export {env_name}=...",
     )
+
+
+def check_optional_tools(project_root: Path, home: Path) -> CheckResult:
+    cfg = _safe_config(project_root, home)
+    if cfg is None:
+        return CheckResult("fail", "optional tools", "config invalid", "Run: devagent setup")
+    warnings: list[str] = []
+    if (
+        cfg.tools.web_search.enabled
+        and cfg.tools.web_search.provider != "searxng"
+        and not get_credential(cfg.tools.web_search.provider, home)
+    ):
+        warnings.append(f"{cfg.tools.web_search.provider} key missing")
+    if cfg.tools.web_fetch.enabled:
+        warnings.append("web_fetch enabled; SSRF checks active")
+    if warnings:
+        return CheckResult("warn", "optional tools", "; ".join(warnings), "Run: devagent tools")
+    return CheckResult("pass", "optional tools", "configured")
 
 
 def check_lessons(home: Path) -> CheckResult:

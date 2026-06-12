@@ -19,13 +19,22 @@ PHASES: dict[str, Phase] = {
     "discovery": Phase(
         name="discovery",
         prompt=prompts.discovery_prompt(),
-        tools=["ask_user", "complete_phase"],
+        tools=["ask_user", "web_search", "complete_phase"],
         next="planning",
     ),
     "planning": Phase(
         name="planning",
         prompt=prompts.planning_prompt(),
-        tools=["ask_user", "read_file", "write_file", "list_files", "load_skill", "complete_phase"],
+        tools=[
+            "ask_user",
+            "read_file",
+            "write_file",
+            "list_files",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "complete_phase",
+        ],
         next="coding",
     ),
     "coding": Phase(
@@ -38,6 +47,8 @@ PHASES: dict[str, Phase] = {
             "list_files",
             "bash",
             "run_and_check",
+            "web_search",
+            "web_fetch",
             "load_skill",
             "ask_user",
             "complete_phase",

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from rich.prompt import Prompt
-
+from devagent.cli.ui.input import DevAgentInput
 from devagent.tools.base import Tool
 
 
@@ -24,4 +23,4 @@ class AskUserTool(Tool):
         question = str(kwargs["question"])
         choices = kwargs.get("choices")
         typed_choices = [str(choice) for choice in choices] if isinstance(choices, list) else None
-        return Prompt.ask(question, choices=typed_choices)
+        return DevAgentInput().prompt(question, choices=typed_choices)

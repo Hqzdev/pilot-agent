@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from importlib import import_module
 from typing import Protocol, TypeVar
 
 from tenacity import RetryCallState, retry, retry_if_exception, stop_after_attempt, wait_exponential
@@ -20,6 +21,11 @@ class ProviderConfigLike(Protocol):
 
 P = TypeVar("P", bound="Provider")
 _REGISTRY: dict[str, type[Provider]] = {}
+_PROVIDER_MODULES = {
+    "anthropic": "devagent.providers.anthropic",
+    "openai": "devagent.providers.openai",
+    "openrouter": "devagent.providers.openrouter",
+}
 
 
 def _status_code(exc: BaseException) -> int | None:
@@ -96,12 +102,14 @@ def register(name: str) -> Callable[[type[P]], type[P]]:
 
 
 def from_config(cfg: ProviderConfigLike) -> Provider:
+    if cfg.provider not in _REGISTRY and cfg.provider in _PROVIDER_MODULES:
+        import_module(_PROVIDER_MODULES[cfg.provider])
     try:
         provider_cls = _REGISTRY[cfg.provider]
     except KeyError as exc:
-        known = ", ".join(sorted(_REGISTRY)) or "(none)"
+        known = ", ".join(sorted(_PROVIDER_MODULES)) or "(none)"
         raise ValueError(f"unknown provider {cfg.provider!r}; known providers: {known}") from exc
     return provider_cls(model=cfg.model, api_key=cfg.resolve_key(), base_url=cfg.base_url)
 
 
-__all__ = ["Provider", "_REGISTRY", "from_config", "register"]
+__all__ = ["Provider", "_PROVIDER_MODULES", "_REGISTRY", "from_config", "register"]

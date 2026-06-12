@@ -3,8 +3,10 @@ set -euo pipefail
 
 export UV_CACHE_DIR="${UV_CACHE_DIR:-.uv-cache}"
 
-uv run ruff check devagent tests
-uv run mypy devagent
-uv run pytest
-uv run python -m compileall devagent
-uv run python -m devagent.cli --help >/dev/null
+uv sync --all-groups --frozen
+
+.venv/bin/ruff check devagent tests
+.venv/bin/mypy --no-incremental --no-sqlite-cache devagent
+.venv/bin/pytest
+.venv/bin/python -m compileall devagent
+.venv/bin/python -m devagent.cli --help >/dev/null

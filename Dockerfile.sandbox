@@ -1,0 +1,9 @@
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash ca-certificates curl git nodejs npm procps \
+    && npm i -g vercel \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+CMD ["sleep", "infinity"]
