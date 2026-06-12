@@ -13,6 +13,11 @@ def test_full_config_defaults_include_onboarding_sections(tmp_path: Path) -> Non
     cfg = load_config(home=tmp_path / "home", project_root=tmp_path / "project")
 
     assert cfg.provider == "anthropic"
+    assert cfg.backend == "docker"
+    assert cfg.sandbox.image == "devagent-sandbox:latest"
+    assert cfg.tools.web_search.enabled is True
+    assert cfg.tools.web_search.provider == "tavily"
+    assert cfg.tools.web_fetch.enabled is False
     assert cfg.phases.deploy.enabled is True
     assert cfg.phases.deploy.vercel_token_env == "VERCEL_TOKEN"
     assert cfg.phases.marketing.enabled is True

@@ -1,0 +1,4 @@
+⚙ bash · npm run build · ✗ exit 1 · 0.8s
+│ [exit 1]
+│ error TS2304: Cannot find name 'foo'
+│ src/index.ts:12

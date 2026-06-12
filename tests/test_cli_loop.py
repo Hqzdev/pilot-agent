@@ -96,7 +96,15 @@ class SkillBackend:
 
 def test_phase_pipeline_and_tools_exact() -> None:
     assert PIPELINE == ["discovery", "planning", "coding", "deploy", "marketing"]
-    assert PHASES["discovery"].tools == ["ask_user", "complete_phase"]
+    assert PHASES["discovery"].tools == ["ask_user", "web_search", "complete_phase"]
+    assert "web_search" in PHASES["planning"].tools
+    assert "web_fetch" in PHASES["planning"].tools
+    assert "web_search" in PHASES["coding"].tools
+    assert "web_fetch" in PHASES["coding"].tools
+    assert "web_search" not in PHASES["deploy"].tools
+    assert "web_fetch" not in PHASES["deploy"].tools
+    assert "web_search" not in PHASES["marketing"].tools
+    assert "web_fetch" not in PHASES["marketing"].tools
     assert PHASES["deploy"].tools == [
         "bash",
         "run_and_check",

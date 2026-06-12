@@ -17,9 +17,14 @@ def test_setup_with_existing_env_key_writes_config_without_secret(
 ) -> None:
     monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-secret")
+    monkeypatch.setattr(setup_wizard, "_docker_available", lambda: True)
     runner = CliRunner()
 
-    result = runner.invoke(app, ["setup", "--provider", "anthropic"], input="\nn\n")
+    result = runner.invoke(
+        app,
+        ["setup", "--provider", "anthropic"],
+        input="\n\n\n\n\nn\n",
+    )
 
     assert result.exit_code == 0
     cfg_path = tmp_path / "home" / "config.yaml"
@@ -28,6 +33,8 @@ def test_setup_with_existing_env_key_writes_config_without_secret(
     data = yaml.safe_load(text)
     assert data["provider"] == "anthropic"
     assert data["api_key_env"] == "ANTHROPIC_API_KEY"
+    assert data["backend"] == "docker"
+    assert data["tools"]["web_search"]["enabled"] is False
     assert data["phases"]["deploy"]["enabled"] is False
 
 
@@ -37,12 +44,13 @@ def test_setup_env_file_secret_has_0600_permissions(
 ) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("DEVAGENT_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(setup_wizard, "_docker_available", lambda: True)
     runner = CliRunner()
 
     result = runner.invoke(
         app,
         ["setup", "--provider", "anthropic"],
-        input="secret-key\n2\n\nY\n",
+        input="secret-key\n2\n\n\nn\nY\n",
     )
 
     env_path = tmp_path / "home" / ".env"
@@ -101,8 +109,22 @@ def test_setup_wizard_can_be_called_directly_with_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "secret")
-    monkeypatch.setattr(setup_wizard.Prompt, "ask", lambda *args, **kwargs: kwargs["default"])
-    monkeypatch.setattr(setup_wizard.Confirm, "ask", lambda *args, **kwargs: kwargs["default"])
+    monkeypatch.setattr(
+        setup_wizard.DevAgentInput,
+        "prompt",
+        lambda self, *args, **kwargs: kwargs["default"],
+    )
+    monkeypatch.setattr(
+        setup_wizard.DevAgentInput,
+        "confirm",
+        lambda self, *args, **kwargs: kwargs["default"],
+    )
+    monkeypatch.setattr(
+        setup_wizard.DevAgentInput,
+        "ask_int",
+        lambda self, *args, **kwargs: kwargs["default"],
+    )
+    monkeypatch.setattr(setup_wizard, "_docker_available", lambda: True)
 
     path = setup_wizard.run_setup_wizard(
         provider_override="anthropic",
