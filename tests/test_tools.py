@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from pilot_agent.agent.tool_guardrails import ToolCallGuardrailController
 from pilot_agent.agent.types import ToolCall
 from pilot_agent.tools.ask_user import AskUserTool
 from pilot_agent.tools.base import Tool, ToolRegistry
@@ -66,6 +67,18 @@ def test_registry_validation_errors_also_write_artifact(tmp_path: Path) -> None:
     assert "validation failed" in result.content
 
 
+def test_registry_redacts_secrets_in_content_and_artifact(tmp_path: Path) -> None:
+    registry = ToolRegistry([EchoTool()], tmp_path)
+
+    result = registry.execute(
+        ToolCall("secret", "echo", {"text": "ANTHROPIC_API_KEY=sk-ant-secretvalue123456"})
+    )
+
+    assert "secretvalue" not in result.content
+    assert result.artifact_path is not None
+    assert "secretvalue" not in Path(result.artifact_path).read_text(encoding="utf-8")
+
+
 def test_registry_timeout_writes_error_artifact(tmp_path: Path) -> None:
     registry = ToolRegistry([SlowTool()], tmp_path)
 
@@ -118,6 +131,24 @@ def test_file_tools_enforce_paths_and_edit_uniqueness(tmp_path: Path) -> None:
     assert outside.is_error is True
 
 
+def test_file_tools_deny_secret_env_files(tmp_path: Path) -> None:
+    registry = ToolRegistry(
+        [ReadFileTool(tmp_path), WriteFileTool(tmp_path)],
+        tmp_path,
+    )
+    (tmp_path / ".env").write_text("TOKEN=secret", encoding="utf-8")
+
+    read = registry.execute(ToolCall("read-env", "read_file", {"path": ".env"}))
+    write = registry.execute(
+        ToolCall("write-env", "write_file", {"path": ".env.local", "content": "TOKEN=x"})
+    )
+
+    assert read.is_error is True
+    assert write.is_error is True
+    assert "Access denied" in read.content
+    assert "Access denied" in write.content
+
+
 def test_read_file_allows_pilot_agent_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     memory = home
@@ -131,6 +162,36 @@ def test_read_file_allows_pilot_agent_home(tmp_path: Path, monkeypatch: pytest.M
     )
 
     assert "lesson" in result.content
+
+
+def test_read_file_denies_pilot_agent_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir(parents=True)
+    (home / "credentials.yaml").write_text("anthropic:\n  api_key: secret\n", encoding="utf-8")
+    monkeypatch.setenv("PILOT_AGENT_HOME", str(home))
+    registry = ToolRegistry([ReadFileTool(tmp_path / "project")], tmp_path / "project")
+
+    result = registry.execute(
+        ToolCall("creds", "read_file", {"path": str(home / "credentials.yaml")})
+    )
+
+    assert result.is_error is True
+    assert "credential store" in result.content
+
+
+def test_tool_guardrails_warn_on_repeated_failure(tmp_path: Path) -> None:
+    guardrails = ToolCallGuardrailController()
+    registry = ToolRegistry([EchoTool()], tmp_path, guardrails=guardrails)
+
+    first = registry.execute(ToolCall("bad1", "echo", {}))
+    second = registry.execute(ToolCall("bad2", "echo", {}))
+
+    assert first.is_error is True
+    assert second.is_error is True
+    assert "Tool loop warning" in second.content
 
 
 def test_run_and_check_kills_sleep_process(tmp_path: Path) -> None:

@@ -9,8 +9,10 @@ from typing import Protocol, cast
 from pilot_agent.agent.context import ContextManager, build_system_prompt
 from pilot_agent.agent.memory import Memory, SkillOutcomeRecorder
 from pilot_agent.agent.phases import PHASES, Phase
+from pilot_agent.agent.session_lock import ProjectSessionLock
 from pilot_agent.agent.state import read_state, write_session_record
 from pilot_agent.agent.types import Message, Role, ToolCall, ToolResult
+from pilot_agent.agent.usage import SessionUsage, normalize_usage
 from pilot_agent.cli.ui import UI
 from pilot_agent.providers.base import Provider
 from pilot_agent.tools.base import ToolRegistry
@@ -63,32 +65,35 @@ class AgentLoop:
         self.stack = stack or []
         self.loaded_skills: dict[str, set[str]] = {}
         self.model_switcher = model_switcher
+        self.usage = SessionUsage()
 
     def run(self, max_turns: int = 200) -> None:
-        turns = 0
-        interrupts = 0
-        while self.phase is not None and turns < max_turns:
-            try:
-                self.run_turn()
-                interrupts = 0
-            except KeyboardInterrupt:
-                interrupts += 1
-                if interrupts >= 2:
-                    write_session_record(
-                        self.project_root,
-                        {"_type": "interrupt", "count": interrupts},
+        with ProjectSessionLock(self.project_root):
+            turns = 0
+            interrupts = 0
+            while self.phase is not None and turns < max_turns:
+                try:
+                    self.run_turn()
+                    interrupts = 0
+                except KeyboardInterrupt:
+                    interrupts += 1
+                    if interrupts >= 2:
+                        write_session_record(
+                            self.project_root,
+                            {"_type": "interrupt", "count": interrupts},
+                        )
+                        self.ui.warning("interrupted twice; saved session and exiting")
+                        break
+                    self.ui.warning(
+                        "interrupted - enter a new instruction or /quit; "
+                        "a second Ctrl+C exits the session"
                     )
-                    self.ui.warning("interrupted twice; saved session and exiting")
-                    break
-                self.ui.warning(
-                    "interrupted - enter a new instruction or /quit; "
-                    "a second Ctrl+C exits the session"
-                )
-            turns += 1
+                turns += 1
 
     def run_turn(self) -> None:
         if self.phase is None:
             return
+        self.registry.guardrails.reset_for_turn()
         phase = self.phase
         state_md = read_state(self.project_root)
         system = build_system_prompt(
@@ -101,6 +106,13 @@ class AgentLoop:
         with self.ui.api_spinner() as progress:
             progress.add_task("api", total=None)
             resp = self.provider.complete(system, messages, self.registry.specs(phase.tools))
+        usage = normalize_usage(resp.usage)
+        self.usage.add(
+            usage,
+            provider=self.provider.__class__.__name__.removesuffix("Provider").lower(),
+            model=self.provider.model,
+        )
+        resp.message.tokens = usage.total_tokens
         resp.message.phase = phase.name
         self.history.append(resp.message)
         write_session_record(self.project_root, resp.message)
@@ -177,8 +189,8 @@ class AgentLoop:
             self.history = self.ctx.compact("", self.history)
             self.ui.warning("context compacted")
         elif command == "/usage":
-            tokens = self.provider.count_tokens("", self.history)
-            self.ui.notice(f"tokens: {tokens}")
+            context_tokens = self.provider.count_tokens("", self.history)
+            self.ui.notice(f"{self.usage.summary()}\ncurrent context tokens: {context_tokens}")
         elif command == "/state":
             self.ui.notice(read_state(self.project_root))
         elif command == "/skills":

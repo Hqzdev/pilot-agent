@@ -8,6 +8,7 @@ from typing import Any, cast
 import openai
 import tiktoken
 
+from pilot_agent.agent.safety import sanitize_jsonable, sanitize_text
 from pilot_agent.agent.types import (
     CompletionResponse,
     Message,
@@ -57,7 +58,10 @@ def openai_messages(messages: list[Message]) -> list[dict[str, Any]]:
                     }
                 )
             continue
-        item: dict[str, Any] = {"role": message.role.value, "content": message.content}
+        item: dict[str, Any] = {
+            "role": message.role.value,
+            "content": sanitize_text(message.content),
+        }
         if message.role is Role.ASSISTANT and message.tool_calls:
             item["tool_calls"] = [
                 {
@@ -65,7 +69,7 @@ def openai_messages(messages: list[Message]) -> list[dict[str, Any]]:
                     "type": "function",
                     "function": {
                         "name": call.name,
-                        "arguments": json.dumps(call.arguments),
+                        "arguments": json.dumps(sanitize_jsonable(call.arguments)),
                     },
                 }
                 for call in message.tool_calls
@@ -91,7 +95,7 @@ def parse_openai_message(raw_message: Any) -> Message:
         name = str(_get(function, "name", ""))
         raw_args = _get(function, "arguments", "{}") or "{}"
         try:
-            args = json.loads(str(raw_args))
+            args = json.loads(sanitize_text(str(raw_args)))
             if not isinstance(args, dict):
                 raise ValueError("tool arguments JSON must decode to an object")
         except (json.JSONDecodeError, ValueError) as exc:
@@ -106,7 +110,7 @@ def parse_openai_message(raw_message: Any) -> Message:
         tool_calls.append(ToolCall(id=call_id, name=name, arguments=cast(dict[str, Any], args)))
     if errors:
         return Message(role=Role.TOOL, tool_results=errors)
-    return Message(role=Role.ASSISTANT, content=str(content), tool_calls=tool_calls)
+    return Message(role=Role.ASSISTANT, content=sanitize_text(str(content)), tool_calls=tool_calls)
 
 
 def parse_openai_response(response: Any) -> CompletionResponse:

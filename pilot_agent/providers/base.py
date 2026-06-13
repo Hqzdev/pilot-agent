@@ -9,6 +9,7 @@ from typing import Protocol, TypeVar
 from tenacity import RetryCallState, retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from pilot_agent.agent.types import CompletionResponse, Message, ToolSpec
+from pilot_agent.providers.errors import format_provider_error
 
 
 class ProviderConfigLike(Protocol):
@@ -60,6 +61,21 @@ class Provider(ABC):
         self.api_key = api_key
         self.base_url = base_url
 
+    def complete(
+        self,
+        system: str,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        max_tokens: int = 4096,
+    ) -> CompletionResponse:
+        try:
+            return self._complete_with_retry(system, messages, tools, max_tokens=max_tokens)
+        except Exception as exc:
+            provider_name = self.__class__.__name__.removesuffix("Provider").lower()
+            raise RuntimeError(
+                format_provider_error(exc, provider=provider_name, model=self.model)
+            ) from exc
+
     @retry(
         retry=retry_if_exception(_retryable),
         wait=wait_exponential(multiplier=1, min=1, max=20),
@@ -67,7 +83,7 @@ class Provider(ABC):
         before_sleep=_log_retry,
         reraise=True,
     )
-    def complete(
+    def _complete_with_retry(
         self,
         system: str,
         messages: list[Message],

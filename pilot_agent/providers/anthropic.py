@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import anthropic
 
+from pilot_agent.agent.safety import sanitize_jsonable, sanitize_text
 from pilot_agent.agent.types import CompletionResponse, Message, Role, ToolCall, ToolSpec
 from pilot_agent.providers.base import Provider, register
 
@@ -60,7 +61,7 @@ def anthropic_messages(messages: list[Message]) -> list[dict[str, Any]]:
                     block: dict[str, Any] = {
                         "type": "tool_result",
                         "tool_use_id": result.tool_call_id,
-                        "content": result.content,
+                        "content": sanitize_text(result.content),
                     }
                     if result.is_error:
                         block["is_error"] = True
@@ -71,20 +72,20 @@ def anthropic_messages(messages: list[Message]) -> list[dict[str, Any]]:
         if message.role is Role.ASSISTANT:
             blocks = []
             if message.content:
-                blocks.append({"type": "text", "text": message.content})
+                blocks.append({"type": "text", "text": sanitize_text(message.content)})
             blocks.extend(
                 {
                     "type": "tool_use",
                     "id": call.id,
                     "name": call.name,
-                    "input": call.arguments,
+                    "input": sanitize_jsonable(call.arguments),
                 }
                 for call in message.tool_calls
             )
             converted.append({"role": "assistant", "content": blocks or message.content})
             idx += 1
             continue
-        converted.append({"role": "user", "content": message.content})
+        converted.append({"role": "user", "content": sanitize_text(message.content)})
         idx += 1
     return converted
 
@@ -95,7 +96,7 @@ def parse_anthropic_response(response: Any) -> CompletionResponse:
     for block in getattr(response, "content", []) or []:
         kind = _block_type(block)
         if kind == "text":
-            content_parts.append(str(_block_get(block, "text", "")))
+            content_parts.append(sanitize_text(str(_block_get(block, "text", ""))))
         elif kind == "tool_use":
             raw_input = _block_get(block, "input", {}) or {}
             args = raw_input if isinstance(raw_input, dict) else {"value": raw_input}

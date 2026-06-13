@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from pilot_agent.agent.safety import read_denial, write_denial
 from pilot_agent.config.schema import default_home
 from pilot_agent.tools.base import Tool
 
@@ -20,8 +21,26 @@ class ProjectPaths:
             candidate = self.project_root / candidate
         resolved = candidate.resolve()
         if self._inside(resolved, self.project_root):
+            denial = (
+                write_denial(resolved, project_root=self.project_root, pilot_home=self.home_memory)
+                if write
+                else read_denial(
+                    resolved,
+                    project_root=self.project_root,
+                    pilot_home=self.home_memory,
+                )
+            )
+            if denial:
+                raise ValueError(denial)
             return resolved
         if not write and self._inside(resolved, self.home_memory):
+            denial = read_denial(
+                resolved,
+                project_root=self.project_root,
+                pilot_home=self.home_memory,
+            )
+            if denial:
+                raise ValueError(denial)
             return resolved
         raise ValueError(f"path is outside project root: {path}")
 

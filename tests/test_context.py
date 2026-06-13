@@ -62,6 +62,32 @@ def test_prepare_summarizes_when_truncation_is_not_enough(tmp_path: Path) -> Non
     assert event["before_tokens"] > event["after_tokens"]
 
 
+def test_compaction_fallback_preserves_paths_when_summarizer_fails(tmp_path: Path) -> None:
+    class FailingSummaryProvider(StaticSummaryProvider):
+        def _complete(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("summary key sk-ant-secretvalue123456 failed")
+
+    provider = FailingSummaryProvider(context_window=250)
+    manager = ContextManager(provider, budget_ratio=0.7, session_log=tmp_path / "session.jsonl")
+    history = [
+        Message(role=Role.USER, content="Fix the install flow"),
+        Message(
+            role=Role.ASSISTANT,
+            content="I will edit install.sh",
+            tool_calls=[],
+        ),
+    ]
+    for idx in range(8):
+        history.append(Message(role=Role.ASSISTANT, content="assistant " + ("y" * 100)))
+        history.append(tool_message(idx, content=f"failed at install.sh line {idx} " + ("x" * 100)))
+
+    prepared = manager.prepare("sys", history)
+
+    assert prepared[0].content.startswith("[Compressed history]")
+    assert "install.sh" in prepared[0].content
+    assert "secretvalue" not in prepared[0].content
+
+
 def test_state_template_and_prompt_warning(tmp_path: Path) -> None:
     path = init_project_state(tmp_path, name="Demo")
     state = read_state(tmp_path)
@@ -77,9 +103,11 @@ def test_state_template_and_prompt_warning(tmp_path: Path) -> None:
 
 
 def test_session_message_records_round_trip(tmp_path: Path) -> None:
-    msg = Message(role=Role.USER, content="hello")
+    msg = Message(role=Role.USER, content="hello sk-ant-secretvalue123456")
 
     write_session_record(tmp_path, msg)
     write_session_record(tmp_path, {"_type": "phase_change", "phase": "planning"})
 
-    assert "hello" in (tmp_path / ".pilot-agent" / "session.jsonl").read_text()
+    text = (tmp_path / ".pilot-agent" / "session.jsonl").read_text()
+    assert "hello" in text
+    assert "secretvalue" not in text

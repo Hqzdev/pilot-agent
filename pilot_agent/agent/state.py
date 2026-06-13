@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from pilot_agent.agent.safety import redact_sensitive_text, sanitize_text
 from pilot_agent.agent.types import Message, from_json, to_json
 
 TASKS_HEADING = "TO" + "DO"
@@ -71,6 +72,7 @@ def write_session_record(project_root: Path, record: Message | dict[str, Any]) -
         if isinstance(record, Message)
         else json.dumps(record, ensure_ascii=False)
     )
+    line = redact_sensitive_text(sanitize_text(line))
     with session_path(project_root).open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
 
