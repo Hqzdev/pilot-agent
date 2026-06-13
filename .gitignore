@@ -7,3 +7,7 @@
 .ruff_cache/
 __pycache__/
 *.py[cod]
+
+# macOS
+.DS_Store
+._*
