@@ -3,7 +3,7 @@ import { CopyButton } from '../copy-button'
 import { GitHub } from '../icons'
 
 const REPO = 'https://github.com/Hqzdev/pilot-agent'
-const CURL = 'curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash'
+const CURL = 'curl -fsSL https://pilotagent.vercel.app/install.sh | bash'
 
 export function Cta() {
   return (

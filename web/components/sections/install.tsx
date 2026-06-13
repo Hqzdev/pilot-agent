@@ -2,9 +2,10 @@ import { Reveal } from '../reveal'
 import { CopyButton } from '../copy-button'
 import { Monitor, Bolt, Code, Play } from '../icons'
 
-const CURL = 'curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash'
+const INSTALL_URL = 'https://pilotagent.vercel.app/install.sh'
+const CURL = `curl -fsSL ${INSTALL_URL} | bash`
 const CURL_SKIP =
-  'curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash -s -- --skip-setup'
+  `curl -fsSL ${INSTALL_URL} | bash -s -- --skip-setup`
 const UV = 'uv tool install git+https://github.com/Hqzdev/pilot-agent'
 const QUICKSTART = `pilot-agent setup
 cd your-project
@@ -35,7 +36,7 @@ export function Install() {
                   <pre>
                     <span className="c-cmd">curl</span> <span className="c-flag">-fsSL</span>{' '}
                     <span className="c-str">
-                      https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh
+                      {INSTALL_URL}
                     </span>{' '}
                     | <span className="c-cmd">bash</span>
                   </pre>
@@ -53,7 +54,7 @@ export function Install() {
                   <pre>
                     <span className="c-cmd">curl</span> <span className="c-flag">-fsSL</span>{' '}
                     <span className="c-str">
-                      https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh
+                      {INSTALL_URL}
                     </span>{' '}
                     | <span className="c-cmd">bash</span>{' '}
                     <span className="c-flag">-s -- --skip-setup</span>

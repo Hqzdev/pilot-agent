@@ -103,6 +103,7 @@
   --mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --maxw: 780px;
+  --content-shift: 24px;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
@@ -143,7 +144,7 @@ p {
 
 .wrap {
   max-width: var(--maxw);
-  margin: 0;
+  margin: 0 0 0 var(--content-shift);
   padding: 0 24px 0 56px;
 }
 
@@ -200,7 +201,7 @@ header.nav.scrolled {
   gap: 16px;
   height: 60px;
   max-width: var(--maxw);
-  margin: 0;
+  margin: 0 0 0 var(--content-shift);
   padding: 0 24px 0 56px;
 }
 .brand {
@@ -1042,6 +1043,7 @@ footer.site {
   text-align: left;
   user-select: none;
   pointer-events: none;
+  margin-left: var(--content-shift);
   padding: 0 24px 24px 56px;
   letter-spacing: -0.02em;
   overflow: hidden;
@@ -1049,6 +1051,9 @@ footer.site {
 
 /* ============ RESPONSIVE ============ */
 @media (max-width: 640px) {
+  :root {
+    --content-shift: 10px;
+  }
   .nav-links {
     display: none;
   }
