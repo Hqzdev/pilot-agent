@@ -39,6 +39,7 @@ class _TextExtractor(HTMLParser):
 
 class WebFetchTool(Tool):
     name = "web_fetch"
+    parallel_safe = True
     description = "Fetch an HTTP(S) page, reject private IP targets, and return extracted text."
     parameters: dict[str, Any] = {
         "type": "object",

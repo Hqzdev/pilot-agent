@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from pilot_agent.agent.hooks import TOOL_REQUEST_MIDDLEWARE, RuntimeHooks
 from pilot_agent.agent.tool_guardrails import ToolCallGuardrailController
 from pilot_agent.agent.types import ToolCall
 from pilot_agent.tools.ask_user import AskUserTool
-from pilot_agent.tools.base import Tool, ToolRegistry
+from pilot_agent.tools.base import Tool, ToolRegistry, ToolSearchSettings
 from pilot_agent.tools.bash import BashTool
 from pilot_agent.tools.file_ops import EditFileTool, ListFilesTool, ReadFileTool, WriteFileTool
 from pilot_agent.tools.phase_tools import CompletePhaseTool
@@ -41,6 +43,58 @@ class SlowTool(EchoTool):
     def execute(self, **kwargs: Any) -> str:
         time.sleep(0.2)
         return "too late"
+
+
+class DeferredEchoTool(EchoTool):
+    name = "deferred_echo"
+    description = "Echo text through a deferred tool."
+    deferrable = True
+
+
+class ParallelProbeTool(Tool):
+    name = "parallel_probe"
+    description = "Probe parallel execution."
+    parallel_safe = True
+    parameters: dict[str, Any] = {
+        "type": "object",
+        "properties": {"label": {"type": "string"}},
+        "required": ["label"],
+        "additionalProperties": False,
+    }
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+
+    @classmethod
+    def reset(cls) -> None:
+        with cls.lock:
+            cls.active = 0
+            cls.max_active = 0
+
+    def execute(self, **kwargs: Any) -> str:
+        with self.lock:
+            self.__class__.active += 1
+            self.__class__.max_active = max(self.__class__.max_active, self.__class__.active)
+        time.sleep(0.05)
+        with self.lock:
+            self.__class__.active -= 1
+        return str(kwargs["label"])
+
+
+class PathScopedProbeTool(ParallelProbeTool):
+    name = "path_probe"
+    description = "Probe path scoped parallel execution."
+    parallel_safe = False
+    path_scope_args = ("path",)
+    parameters: dict[str, Any] = {
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"],
+        "additionalProperties": False,
+    }
+
+    def execute(self, **kwargs: Any) -> str:
+        return super().execute(label=str(kwargs["path"]))
 
 
 def test_registry_validates_writes_artifact_and_truncates(tmp_path: Path) -> None:
@@ -192,6 +246,110 @@ def test_tool_guardrails_warn_on_repeated_failure(tmp_path: Path) -> None:
     assert first.is_error is True
     assert second.is_error is True
     assert "Tool loop warning" in second.content
+
+
+def test_runtime_hooks_can_mutate_block_and_transform_tool_calls(tmp_path: Path) -> None:
+    hooks = RuntimeHooks()
+    observed: list[tuple[str, str]] = []
+
+    def normalize_args(args: dict[str, Any], **_: Any) -> dict[str, Any]:
+        return {
+            "name": "normalize_args",
+            "args": {"text": str(args["text"]).upper()},
+            "changed": True,
+        }
+
+    def pre_tool(args: dict[str, Any], **_: Any) -> dict[str, str] | None:
+        if args["text"] == "BLOCK":
+            return {"action": "block", "message": "blocked by test hook"}
+        observed.append(("pre", str(args["text"])))
+        return None
+
+    hooks.register_middleware(TOOL_REQUEST_MIDDLEWARE, normalize_args)
+    hooks.register_hook("pre_tool_call", pre_tool)
+    hooks.register_hook(
+        "post_tool_call",
+        lambda result, **_: observed.append(("post", str(result))),
+    )
+    hooks.register_hook("transform_tool_result", lambda result, **_: f"{result}!")
+    registry = ToolRegistry([EchoTool()], tmp_path, hooks=hooks)
+
+    ok = registry.execute(ToolCall("ok", "echo", {"text": "hello"}))
+    blocked = registry.execute(ToolCall("blocked", "echo", {"text": "block"}))
+
+    assert ok.content == "HELLO!"
+    assert blocked.is_error is True
+    assert "blocked by test hook" in blocked.content
+    assert observed == [("pre", "HELLO"), ("post", "HELLO"), ("post", "blocked by test hook")]
+
+
+def test_tool_search_bridge_defers_and_scopes_tools(tmp_path: Path) -> None:
+    registry = ToolRegistry(
+        [EchoTool(), DeferredEchoTool()],
+        tmp_path,
+        tool_search=ToolSearchSettings(enabled="on", search_default_limit=2),
+    )
+
+    names = [spec.name for spec in registry.specs()]
+    search = registry.execute(ToolCall("search", "tool_search", {"query": "deferred echo"}))
+    describe = registry.execute(
+        ToolCall("describe", "tool_describe", {"name": "deferred_echo"})
+    )
+    called = registry.execute(
+        ToolCall(
+            "call",
+            "tool_call",
+            {"name": "deferred_echo", "arguments": {"text": "hi"}},
+        )
+    )
+    out_of_scope = registry.execute(
+        ToolCall(
+            "scope",
+            "tool_call",
+            {"name": "deferred_echo", "arguments": {"text": "hi"}},
+        ),
+        context={"allowed_tools": ["echo"]},
+    )
+
+    assert "echo" in names
+    assert "deferred_echo" not in names
+    assert {"tool_search", "tool_describe", "tool_call"}.issubset(names)
+    assert json.loads(search.content)["matches"][0]["name"] == "deferred_echo"
+    assert json.loads(describe.content)["name"] == "deferred_echo"
+    assert called.content == "hi"
+    assert out_of_scope.is_error is True
+    assert "unavailable in this scope" in out_of_scope.content
+
+
+def test_execute_batch_parallelizes_only_safe_groups(tmp_path: Path) -> None:
+    ParallelProbeTool.reset()
+    registry = ToolRegistry([ParallelProbeTool(), PathScopedProbeTool()], tmp_path)
+
+    registry.execute_batch(
+        [
+            ToolCall("a", "parallel_probe", {"label": "a"}),
+            ToolCall("b", "parallel_probe", {"label": "b"}),
+        ]
+    )
+    assert ParallelProbeTool.max_active >= 2
+
+    PathScopedProbeTool.reset()
+    registry.execute_batch(
+        [
+            ToolCall("c", "path_probe", {"path": "a.txt"}),
+            ToolCall("d", "path_probe", {"path": "b.txt"}),
+        ]
+    )
+    assert PathScopedProbeTool.max_active >= 2
+
+    PathScopedProbeTool.reset()
+    registry.execute_batch(
+        [
+            ToolCall("e", "path_probe", {"path": "same.txt"}),
+            ToolCall("f", "path_probe", {"path": "same.txt"}),
+        ]
+    )
+    assert PathScopedProbeTool.max_active == 1
 
 
 def test_run_and_check_kills_sleep_process(tmp_path: Path) -> None:

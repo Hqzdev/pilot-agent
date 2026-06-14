@@ -39,8 +39,8 @@ from pilot_agent.cli.ui.components import create_console, simple_table
 from pilot_agent.cli.ui.input import PilotAgentInput
 from pilot_agent.config.credentials import (
     credential_services,
-    credentials_permissions,
     credentials_path,
+    credentials_permissions,
     get_credential,
     mask_secret,
     remove_credential,
@@ -62,7 +62,7 @@ from pilot_agent.config.schema import (
 from pilot_agent.providers.base import Provider, from_config
 from pilot_agent.skills.registry import SkillRegistry
 from pilot_agent.tools.ask_user import AskUserTool
-from pilot_agent.tools.base import ToolRegistry
+from pilot_agent.tools.base import ToolRegistry, ToolSearchSettings
 from pilot_agent.tools.bash import BashTool
 from pilot_agent.tools.file_ops import EditFileTool, ListFilesTool, ReadFileTool, WriteFileTool
 from pilot_agent.tools.phase_tools import CompletePhaseTool
@@ -193,7 +193,11 @@ def build_tool_registry(
         tools.append(WebFetchTool())
     for tool in tools:
         tool.timeout_s = cfg.tool_timeout_s
-    return ToolRegistry(tools, project_root)
+    return ToolRegistry(
+        tools,
+        project_root,
+        tool_search=ToolSearchSettings.from_raw(cfg.tools.tool_search),
+    )
 
 
 def run_loop(cfg: PilotAgentConfig) -> None:
@@ -571,15 +575,18 @@ def tools_command(
         render_tools_table(cfg)
         emit("Change with: pilot-agent tools <web_search|web_fetch|deploy> --enable|--disable")
         return
-    if tool not in {"web_search", "web_fetch", "deploy"}:
-        emit("Error: unknown tool. Use web_search, web_fetch, or deploy")
+    if tool not in {"web_search", "web_fetch", "deploy", "tool_search"}:
+        emit("Error: unknown tool. Use web_search, web_fetch, deploy, or tool_search")
         raise typer.Exit(1)
     if enable and disable:
         emit("Error: choose only one of --enable or --disable")
         raise typer.Exit(1)
     updates: dict[str, object] = {}
     if enable or disable:
-        updates[f"tools.{tool}.enabled"] = enable
+        enabled_value: object = "on" if enable else "off"
+        if tool != "tool_search":
+            enabled_value = enable
+        updates[f"tools.{tool}.enabled"] = enabled_value
     if provider is not None:
         if tool != "web_search":
             emit("Error: --provider applies only to web_search")
@@ -609,6 +616,11 @@ def render_tools_table(cfg: PilotAgentConfig) -> None:
         "web_fetch",
         "✓ enabled" if cfg.tools.web_fetch.enabled else "✗ disabled",
         "SSRF checks",
+    )
+    table.add_row(
+        "tool_search",
+        f"{cfg.tools.tool_search.enabled}",
+        f"threshold {cfg.tools.tool_search.threshold_pct:g}%",
     )
     vercel_key = get_credential("vercel", home, env_name=cfg.phases.deploy.vercel_token_env)
     deploy_state = (

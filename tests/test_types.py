@@ -4,6 +4,7 @@ from pilot_agent.agent.types import (
     CompletionResponse,
     Message,
     Role,
+    SessionEvent,
     ToolCall,
     ToolResult,
     from_json,
@@ -52,3 +53,14 @@ def test_completion_response_round_trip() -> None:
     decoded = from_json(to_json(response))
 
     assert decoded == response
+
+
+def test_session_event_round_trip() -> None:
+    event = SessionEvent(
+        event_type="compaction",
+        payload={"before_tokens": 100, "provenance": {"compaction_depth": 1}},
+    )
+
+    decoded = from_json(to_json(event))
+
+    assert decoded == event

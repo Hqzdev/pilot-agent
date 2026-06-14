@@ -26,6 +26,11 @@ tools:
     enabled: false
   deploy:
     enabled: true
+  tool_search:
+    enabled: auto
+    threshold_pct: 10.0
+    search_default_limit: 5
+    max_search_limit: 20
 ui:
   color: auto
   show_token_counter: true

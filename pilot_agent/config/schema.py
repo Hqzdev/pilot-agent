@@ -74,10 +74,18 @@ class DeployToolConfig(BaseModel):
     enabled: bool = True
 
 
+class ToolSearchBridgeConfig(BaseModel):
+    enabled: Literal["auto", "on", "off"] = "auto"
+    threshold_pct: float = 10.0
+    search_default_limit: int = 5
+    max_search_limit: int = 20
+
+
 class ToolsConfig(BaseModel):
     web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
     web_fetch: WebFetchConfig = Field(default_factory=WebFetchConfig)
     deploy: DeployToolConfig = Field(default_factory=DeployToolConfig)
+    tool_search: ToolSearchBridgeConfig = Field(default_factory=ToolSearchBridgeConfig)
 
 
 class ProviderConfig(BaseModel):
@@ -199,6 +207,10 @@ def _env_map() -> dict[str, str]:
         "tools.web_search.searxng_url": "PILOT_AGENT_TOOLS_WEB_SEARCH_SEARXNG_URL",
         "tools.web_fetch.enabled": "PILOT_AGENT_TOOLS_WEB_FETCH_ENABLED",
         "tools.deploy.enabled": "PILOT_AGENT_TOOLS_DEPLOY_ENABLED",
+        "tools.tool_search.enabled": "PILOT_AGENT_TOOLS_TOOL_SEARCH_ENABLED",
+        "tools.tool_search.threshold_pct": "PILOT_AGENT_TOOLS_TOOL_SEARCH_THRESHOLD_PCT",
+        "tools.tool_search.search_default_limit": "PILOT_AGENT_TOOLS_TOOL_SEARCH_DEFAULT_LIMIT",
+        "tools.tool_search.max_search_limit": "PILOT_AGENT_TOOLS_TOOL_SEARCH_MAX_LIMIT",
         "ui.color": "PILOT_AGENT_UI_COLOR",
         "ui.show_token_counter": "PILOT_AGENT_UI_SHOW_TOKEN_COUNTER",
     }

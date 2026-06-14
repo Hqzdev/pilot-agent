@@ -1,17 +1,25 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 from pilot_agent.agent.context import ContextManager, build_system_prompt
 from pilot_agent.agent.memory import Memory, SkillOutcomeRecorder
 from pilot_agent.agent.phases import PHASES, Phase
 from pilot_agent.agent.session_lock import ProjectSessionLock
 from pilot_agent.agent.state import read_state, write_session_record
-from pilot_agent.agent.types import Message, Role, ToolCall, ToolResult
+from pilot_agent.agent.types import (
+    CompletionResponse,
+    Message,
+    Role,
+    ToolCall,
+    ToolResult,
+    ToolSpec,
+)
 from pilot_agent.agent.usage import SessionUsage, normalize_usage
 from pilot_agent.cli.ui import UI
 from pilot_agent.providers.base import Provider
@@ -103,9 +111,10 @@ class AgentLoop:
             self.memory.relevant_lessons(self.stack),
         )
         messages = self.ctx.prepare(system, self.history)
+        tools = self.registry.specs(phase.tools, context_window=self.provider.context_window)
         with self.ui.api_spinner() as progress:
             progress.add_task("api", total=None)
-            resp = self.provider.complete(system, messages, self.registry.specs(phase.tools))
+            resp = self._complete_with_hooks(system, messages, tools, phase)
         usage = normalize_usage(resp.usage)
         self.usage.add(
             usage,
@@ -118,21 +127,7 @@ class AgentLoop:
         write_session_record(self.project_root, resp.message)
         self.ui.render(resp.message)
         if resp.stop_reason == "tool_use":
-            results: list[ToolResult] = []
-            pin_tool_message = False
-            for call in resp.message.tool_calls:
-                if call.name == "complete_phase":
-                    results.append(self.advance_phase(call))
-                    continue
-                timer = self.ui.tool_timer(call)
-                result = self.registry.execute(call)
-                self.memory.observe(call, result)
-                self.ui.render_tool_result(call, result, elapsed_s=timer.elapsed())
-                if call.name == "load_skill" and not result.is_error:
-                    skill_name = str(call.arguments.get("name", ""))
-                    self.loaded_skills.setdefault(phase.name, set()).add(skill_name)
-                    pin_tool_message = True
-                results.append(result)
+            results, pin_tool_message = self._execute_tool_calls(phase, resp.message.tool_calls)
             current_phase = self.phase.name if self.phase is not None else None
             tool_msg = Message(
                 role=Role.TOOL,
@@ -150,6 +145,109 @@ class AgentLoop:
             user_msg = Message(role=Role.USER, content=user_input, phase=phase.name)
             self.history.append(user_msg)
             write_session_record(self.project_root, user_msg)
+
+    def _complete_with_hooks(
+        self,
+        system: str,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        phase: Phase,
+    ) -> CompletionResponse:
+        context = self._runtime_context(phase)
+        request: dict[str, Any] = {
+            "system": system,
+            "messages": messages,
+            "tools": tools,
+            "max_tokens": 4096,
+        }
+        self.registry.hooks.invoke_hook("pre_llm_call", **request, **context)
+        request_mw = self.registry.hooks.apply_llm_request_middleware(request, **context)
+        payload = request_mw.payload if isinstance(request_mw.payload, dict) else request
+        started_at = time.monotonic()
+
+        def invoke_provider(next_request: Any) -> CompletionResponse:
+            typed = _coerce_llm_request(next_request, fallback=request)
+            return self.provider.complete(
+                typed["system"],
+                typed["messages"],
+                typed["tools"],
+                max_tokens=typed["max_tokens"],
+            )
+
+        try:
+            response = self.registry.hooks.run_llm_execution_middleware(
+                payload,
+                invoke_provider,
+                **context,
+                middleware_trace=request_mw.trace,
+            )
+        except Exception as exc:
+            self.registry.hooks.invoke_hook(
+                "api_request_error",
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+                **context,
+            )
+            raise
+        if not isinstance(response, CompletionResponse):
+            raise TypeError("llm execution middleware must return CompletionResponse")
+        self.registry.hooks.invoke_hook(
+            "post_llm_call",
+            stop_reason=response.stop_reason,
+            usage=response.usage,
+            tool_call_count=len(response.message.tool_calls),
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            **context,
+        )
+        return response
+
+    def _execute_tool_calls(
+        self,
+        phase: Phase,
+        calls: list[ToolCall],
+    ) -> tuple[list[ToolResult], bool]:
+        results: list[ToolResult] = []
+        pin_tool_message = False
+        pending: list[ToolCall] = []
+
+        def flush_pending() -> None:
+            nonlocal pin_tool_message
+            if not pending:
+                return
+            executions = self.registry.execute_batch(
+                list(pending),
+                context=self._runtime_context(phase),
+            )
+            pending.clear()
+            for execution in executions:
+                call = execution.call
+                result = execution.result
+                self.memory.observe(call, result)
+                self.ui.render_tool_result(call, result, elapsed_s=execution.elapsed_s)
+                if call.name == "load_skill" and not result.is_error:
+                    skill_name = str(call.arguments.get("name", ""))
+                    self.loaded_skills.setdefault(phase.name, set()).add(skill_name)
+                    pin_tool_message = True
+                results.append(result)
+
+        for call in calls:
+            if call.name == "complete_phase":
+                flush_pending()
+                results.append(self.advance_phase(call))
+                continue
+            pending.append(call)
+        flush_pending()
+        return results, pin_tool_message
+
+    def _runtime_context(self, phase: Phase) -> dict[str, Any]:
+        provider_name = self.provider.__class__.__name__.removesuffix("Provider").lower()
+        return {
+            "phase": phase.name,
+            "allowed_tools": list(phase.tools),
+            "project_root": str(self.project_root),
+            "provider": provider_name,
+            "model": self.provider.model,
+        }
 
     def handle_slash_command(self, raw: str) -> bool:
         command, _, arg = raw.partition(" ")
@@ -253,6 +351,34 @@ class AgentLoop:
     def _summarize_lesson(self, prompt: str) -> str:
         response = self.provider.complete(prompt, messages=[], tools=[], max_tokens=512)
         return response.message.content
+
+
+def _coerce_llm_request(
+    request: Any,
+    *,
+    fallback: dict[str, Any],
+) -> dict[str, Any]:
+    raw = request if isinstance(request, dict) else fallback
+    system = raw.get("system", fallback["system"])
+    messages = raw.get("messages", fallback["messages"])
+    tools = raw.get("tools", fallback["tools"])
+    max_tokens = raw.get("max_tokens", fallback["max_tokens"])
+    if not isinstance(system, str):
+        system = fallback["system"]
+    if not isinstance(messages, list):
+        messages = fallback["messages"]
+    if not isinstance(tools, list):
+        tools = fallback["tools"]
+    try:
+        typed_max_tokens = int(max_tokens)
+    except (TypeError, ValueError):
+        typed_max_tokens = int(fallback["max_tokens"])
+    return {
+        "system": system,
+        "messages": cast(list[Message], messages),
+        "tools": cast(list[ToolSpec], tools),
+        "max_tokens": typed_max_tokens,
+    }
 
 
 def restore_phase_from_session(project_root: Path) -> str | None:

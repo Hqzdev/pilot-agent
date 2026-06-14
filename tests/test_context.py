@@ -39,7 +39,7 @@ def test_prepare_truncates_copy_not_original_and_preserves_recent_turns(tmp_path
     assert after_tokens <= manager.threshold
     assert history[1].tool_results[0].content == "x" * 300
     assert prepared[0].pinned is True
-    assert "[output 300 chars -> a0.txt]" in prepared[1].tool_results[0].content
+    assert prepared[1].tool_results[0].content.startswith("[output 300 chars -> a0.txt")
     assert prepared[-1].tool_results[0].content == "x" * 300
 
 
@@ -58,8 +58,11 @@ def test_prepare_summarizes_when_truncation_is_not_enough(tmp_path: Path) -> Non
     assert prepared[0].content == "[Compressed history]\nphase summary"
     assert any(message.content == "pinned" for message in prepared)
     assert len([m for m in prepared if m.role in {Role.ASSISTANT, Role.TOOL}]) == 6
-    assert event["_type"] == "compaction"
-    assert event["before_tokens"] > event["after_tokens"]
+    assert event["_type"] == "SessionEvent"
+    assert event["event_type"] == "compaction"
+    assert event["payload"]["before_tokens"] > event["payload"]["after_tokens"]
+    assert event["payload"]["provenance"]["compaction_depth"] == 1
+    assert event["payload"]["provenance"]["session_kind"] == "continuation"
 
 
 def test_compaction_fallback_preserves_paths_when_summarizer_fails(tmp_path: Path) -> None:

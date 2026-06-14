@@ -72,6 +72,8 @@ class Provider(ABC):
             return self._complete_with_retry(system, messages, tools, max_tokens=max_tokens)
         except Exception as exc:
             provider_name = self.__class__.__name__.removesuffix("Provider").lower()
+            if provider_name not in _PROVIDER_MODULES:
+                raise
             raise RuntimeError(
                 format_provider_error(exc, provider=provider_name, model=self.model)
             ) from exc

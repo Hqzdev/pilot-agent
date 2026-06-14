@@ -187,7 +187,7 @@ def _ensure_provider_key(
             return
     link = _key_url(provider)
     if link:
-        console.print(f"Get a key: {link}", style="pilot_agent.dim")
+        console.print(f"Get a key: {link}", style="pilot_agent.muted")
     for attempt in range(1, 4):
         key = prompt.prompt(f"{provider} API key", password=True, default="")
         if not key:
@@ -238,7 +238,10 @@ def _ensure_vercel_token(prompt: PilotAgentInput, console: Console, home: Path) 
             style="pilot_agent.ok",
         )
         return
-    console.print("Create a token: https://vercel.com/account/tokens", style="pilot_agent.dim")
+    console.print(
+        "Create a token: https://vercel.com/account/tokens",
+        style="pilot_agent.muted",
+    )
     token = prompt.prompt("Vercel token (Enter to skip)", password=True, default="")
     if token:
         set_credential("vercel", token, home)

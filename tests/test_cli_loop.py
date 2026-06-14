@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
 from typer.testing import CliRunner
 
 from pilot_agent.agent.context import ContextManager, StaticSummaryProvider
+from pilot_agent.agent.hooks import LLM_REQUEST_MIDDLEWARE, RuntimeHooks
 from pilot_agent.agent.loop import AgentLoop, restore_phase_from_session
 from pilot_agent.agent.phases import PHASES, PIPELINE
 from pilot_agent.agent.prompts import (
@@ -67,6 +70,29 @@ class NoopTool(Tool):
         return "noop"
 
 
+class ParallelNoopTool(NoopTool):
+    name = "parallel_noop"
+    parallel_safe = True
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+
+    @classmethod
+    def reset(cls) -> None:
+        with cls.lock:
+            cls.active = 0
+            cls.max_active = 0
+
+    def execute(self, **kwargs: Any) -> str:
+        with self.lock:
+            self.__class__.active += 1
+            self.__class__.max_active = max(self.__class__.max_active, self.__class__.active)
+        time.sleep(0.05)
+        with self.lock:
+            self.__class__.active -= 1
+        return "noop"
+
+
 class SequenceProvider(CompleteOnlyProvider):
     def __init__(self, calls: list[ToolCall]):
         super().__init__()
@@ -82,6 +108,26 @@ class SequenceProvider(CompleteOnlyProvider):
         self.system_seen = system
         return CompletionResponse(
             message=Message(role=Role.ASSISTANT, tool_calls=[self.calls.pop(0)]),
+            stop_reason="tool_use",
+            usage={"input_tokens": 1, "output_tokens": 1},
+        )
+
+
+class BatchProvider(CompleteOnlyProvider):
+    def __init__(self, calls: list[ToolCall]):
+        super().__init__()
+        self.calls = calls
+
+    def _complete(
+        self,
+        system: str,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        max_tokens: int = 4096,
+    ) -> CompletionResponse:
+        self.system_seen = system
+        return CompletionResponse(
+            message=Message(role=Role.ASSISTANT, tool_calls=self.calls),
             stop_reason="tool_use",
             usage={"input_tokens": 1, "output_tokens": 1},
         )
@@ -174,6 +220,62 @@ def test_loop_turn_complete_phase_logs_and_advances(tmp_path: Path) -> None:
     assert len(read_session_messages(tmp_path)) == 2
     assert "brief" in (tmp_path / ".pilot-agent" / "STATE.md").read_text()
     assert "phase_change" in (tmp_path / ".pilot-agent" / "session.jsonl").read_text()
+
+
+def test_loop_applies_llm_hooks_and_middleware(tmp_path: Path) -> None:
+    init_project_state(tmp_path, "Demo")
+    provider = CompleteOnlyProvider()
+    hooks = RuntimeHooks()
+    events: list[str] = []
+
+    def mutate_request(request: dict[str, Any], **_: Any) -> dict[str, Any]:
+        updated = dict(request)
+        updated["system"] = str(updated["system"]) + "\nHOOKED"
+        return {"name": "append-hook-marker", "request": updated, "changed": True}
+
+    hooks.register_hook("pre_llm_call", lambda **_: events.append("pre"))
+    hooks.register_middleware(LLM_REQUEST_MIDDLEWARE, mutate_request)
+    hooks.register_hook("post_llm_call", lambda **_: events.append("post"))
+    loop = AgentLoop(
+        project_root=tmp_path,
+        provider=provider,
+        registry=ToolRegistry([NoopTool()], tmp_path, hooks=hooks),
+        ctx=ContextManager(
+            StaticSummaryProvider(),
+            session_log=tmp_path / ".pilot-agent/session.jsonl",
+        ),
+    )
+
+    loop.run_turn()
+
+    assert "HOOKED" in provider.system_seen
+    assert events == ["pre", "post"]
+
+
+def test_loop_batches_parallel_safe_tool_calls(tmp_path: Path) -> None:
+    init_project_state(tmp_path, "Demo")
+    ParallelNoopTool.reset()
+    provider = BatchProvider(
+        [
+            ToolCall("a", "parallel_noop", {}),
+            ToolCall("b", "parallel_noop", {}),
+        ]
+    )
+    loop = AgentLoop(
+        project_root=tmp_path,
+        provider=provider,
+        registry=ToolRegistry([ParallelNoopTool()], tmp_path),
+        ctx=ContextManager(
+            StaticSummaryProvider(),
+            session_log=tmp_path / ".pilot-agent/session.jsonl",
+        ),
+    )
+
+    loop.run_turn()
+
+    assert ParallelNoopTool.max_active >= 2
+    assert loop.history[-1].role is Role.TOOL
+    assert len(loop.history[-1].tool_results) == 2
 
 
 def test_loop_pins_loaded_skill_and_records_outcome(tmp_path: Path) -> None:
