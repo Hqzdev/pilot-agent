@@ -9,6 +9,7 @@ import anthropic
 from pilot_agent.agent.safety import sanitize_jsonable, sanitize_text
 from pilot_agent.agent.types import CompletionResponse, Message, Role, ToolCall, ToolSpec
 from pilot_agent.providers.base import Provider, register
+from pilot_agent.providers.hardening import sanitize_tool_schema
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def anthropic_tools(tools: Iterable[ToolSpec]) -> list[dict[str, Any]]:
         {
             "name": tool.name,
             "description": tool.description,
-            "input_schema": tool.parameters,
+            "input_schema": sanitize_tool_schema(tool.parameters),
         }
         for tool in tools
     ]

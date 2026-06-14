@@ -3,13 +3,14 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from dataclasses import dataclass, replace
 from importlib import import_module
 from typing import Protocol, TypeVar
 
 from tenacity import RetryCallState, retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from pilot_agent.agent.types import CompletionResponse, Message, ToolSpec
-from pilot_agent.providers.errors import format_provider_error
+from pilot_agent.providers.errors import classify_provider_error, format_provider_error
 
 
 class ProviderConfigLike(Protocol):
@@ -27,6 +28,14 @@ _PROVIDER_MODULES = {
     "openai": "pilot_agent.providers.openai",
     "openrouter": "pilot_agent.providers.openrouter",
 }
+
+
+@dataclass(frozen=True)
+class ProviderRequest:
+    system: str
+    messages: list[Message]
+    tools: list[ToolSpec]
+    max_tokens: int = 4096
 
 
 def _status_code(exc: BaseException) -> int | None:
@@ -68,15 +77,50 @@ class Provider(ABC):
         tools: list[ToolSpec],
         max_tokens: int = 4096,
     ) -> CompletionResponse:
+        request = self.prepare_request(
+            ProviderRequest(system=system, messages=messages, tools=tools, max_tokens=max_tokens)
+        )
         try:
-            return self._complete_with_retry(system, messages, tools, max_tokens=max_tokens)
+            return self._complete_with_retry(
+                request.system,
+                request.messages,
+                request.tools,
+                max_tokens=request.max_tokens,
+            )
         except Exception as exc:
+            try:
+                context_fallback = self._context_fallback(exc, request)
+            except Exception as fallback_exc:
+                exc = fallback_exc
+            else:
+                if context_fallback is not None:
+                    return context_fallback
             provider_name = self.__class__.__name__.removesuffix("Provider").lower()
             if provider_name not in _PROVIDER_MODULES:
                 raise
             raise RuntimeError(
                 format_provider_error(exc, provider=provider_name, model=self.model)
             ) from exc
+
+    def prepare_request(self, request: ProviderRequest) -> ProviderRequest:
+        return request
+
+    def _context_fallback(
+        self,
+        exc: Exception,
+        request: ProviderRequest,
+    ) -> CompletionResponse | None:
+        provider_name = self.__class__.__name__.removesuffix("Provider").lower()
+        info = classify_provider_error(exc, provider=provider_name, model=self.model)
+        if info.kind != "context" or request.max_tokens <= 1024:
+            return None
+        fallback = replace(request, max_tokens=1024)
+        return self._complete_with_retry(
+            fallback.system,
+            fallback.messages,
+            fallback.tools,
+            max_tokens=fallback.max_tokens,
+        )
 
     @retry(
         retry=retry_if_exception(_retryable),
@@ -130,4 +174,11 @@ def from_config(cfg: ProviderConfigLike) -> Provider:
     return provider_cls(model=cfg.model, api_key=cfg.resolve_key(), base_url=cfg.base_url)
 
 
-__all__ = ["Provider", "_PROVIDER_MODULES", "_REGISTRY", "from_config", "register"]
+__all__ = [
+    "Provider",
+    "ProviderRequest",
+    "_PROVIDER_MODULES",
+    "_REGISTRY",
+    "from_config",
+    "register",
+]

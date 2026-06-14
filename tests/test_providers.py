@@ -12,7 +12,9 @@ from pilot_agent.providers.anthropic import (
     anthropic_tools,
     parse_anthropic_response,
 )
-from pilot_agent.providers.base import Provider, from_config, register
+from pilot_agent.providers.base import Provider, ProviderRequest, from_config, register
+from pilot_agent.providers.errors import format_provider_error
+from pilot_agent.providers.hardening import sanitize_tool_schema
 from pilot_agent.providers.openai import (
     OpenAIProvider,
     openai_messages,
@@ -23,13 +25,29 @@ from pilot_agent.providers.openrouter import _MODEL_CACHE, OpenRouterProvider
 
 
 def test_anthropic_tool_spec_uses_input_schema() -> None:
-    tools = [ToolSpec("read_file", "Read a file", {"type": "object", "properties": {}})]
+    tools = [
+        ToolSpec(
+            "read_file",
+            "Read a file",
+            {
+                "type": "object",
+                "properties": {"path": {"type": "string", "x-local": object()}},
+                "required": ["path", "missing"],
+                "x-unsafe": object(),
+            },
+        )
+    ]
 
     assert anthropic_tools(tools) == [
         {
             "name": "read_file",
             "description": "Read a file",
-            "input_schema": {"type": "object", "properties": {}},
+            "input_schema": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
         }
     ]
 
@@ -142,7 +160,11 @@ def test_openai_tool_spec_and_message_conversion() -> None:
             "function": {
                 "name": "bash",
                 "description": "Run shell",
-                "parameters": {"type": "object"},
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
             },
         }
     ]
@@ -211,6 +233,56 @@ def test_openai_broken_json_returns_tool_result_error() -> None:
             is_error=True,
         )
     ]
+
+
+def test_openai_recovers_common_malformed_json_arguments() -> None:
+    response = {
+        "choices": [
+            {
+                "message": {
+                    "tool_calls": [
+                        {
+                            "id": "call_recover",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": '{"path": "README.md",}',
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+        "usage": {},
+    }
+
+    parsed = parse_openai_response(response)
+
+    assert parsed.message.role is Role.ASSISTANT
+    assert parsed.message.tool_calls == [
+        ToolCall("call_recover", "read_file", {"path": "README.md"})
+    ]
+
+
+def test_sanitize_tool_schema_keeps_provider_safe_json_schema() -> None:
+    schema = sanitize_tool_schema(
+        {
+            "type": "function",
+            "properties": {
+                "ok": {"type": "string", "description": "safe", "callable": object()},
+                "bad": "not schema",
+            },
+            "required": ["ok", "bad"],
+            "callable": object(),
+        }
+    )
+
+    assert schema == {
+        "type": "object",
+        "properties": {"ok": {"type": "string", "description": "safe"}},
+        "required": ["ok"],
+        "additionalProperties": False,
+    }
 
 
 def test_anthropic_complete_uses_mocked_client(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -326,6 +398,10 @@ class NonRetryableError(Exception):
     status_code = 400
 
 
+class ContextWindowError(Exception):
+    status_code = 400
+
+
 @register("retry-test")
 class RetryProvider(Provider):
     def __init__(self, model: str, api_key: str, base_url: str | None = None):
@@ -369,6 +445,56 @@ class NoRetryProvider(RetryProvider):
         raise NonRetryableError("bad request")
 
 
+@register("context-fallback-test")
+class ContextFallbackProvider(RetryProvider):
+    def __init__(self, model: str, api_key: str, base_url: str | None = None):
+        super().__init__(model, api_key, base_url)
+        self.max_tokens_seen: list[int] = []
+
+    def _complete(
+        self,
+        system: str,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        max_tokens: int = 4096,
+    ):
+        self.calls += 1
+        self.max_tokens_seen.append(max_tokens)
+        if self.calls == 1:
+            raise ContextWindowError("context length too long")
+        return type(
+            "Completion",
+            (),
+            {"message": Message(Role.ASSISTANT), "stop_reason": "end_turn", "usage": {}},
+        )()
+
+
+@register("request-hook-test")
+class RequestHookProvider(RetryProvider):
+    def prepare_request(self, request: ProviderRequest) -> ProviderRequest:
+        return ProviderRequest(
+            system=f"{request.system}\nprepared",
+            messages=request.messages,
+            tools=request.tools,
+            max_tokens=request.max_tokens,
+        )
+
+    def _complete(
+        self,
+        system: str,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        max_tokens: int = 4096,
+    ):
+        self.calls += 1
+        assert system.endswith("prepared")
+        return type(
+            "Completion",
+            (),
+            {"message": Message(Role.ASSISTANT), "stop_reason": "end_turn", "usage": {}},
+        )()
+
+
 def test_provider_factory_uses_registry_without_if_else() -> None:
     class Cfg:
         provider = "retry-test"
@@ -390,3 +516,28 @@ def test_provider_base_retries_429_and_not_400() -> None:
     with pytest.raises(NonRetryableError):
         no_retry.complete("", [], [])
     assert no_retry.calls == 1
+
+
+def test_provider_base_context_fallback_reduces_output_tokens() -> None:
+    provider = ContextFallbackProvider("m", "k")
+
+    provider.complete("", [], [], max_tokens=4096)
+
+    assert provider.calls == 2
+    assert provider.max_tokens_seen == [4096, 1024]
+
+
+def test_provider_base_prepare_request_hook_runs_before_call() -> None:
+    provider = RequestHookProvider("m", "k")
+
+    provider.complete("sys", [], [])
+
+    assert provider.calls == 1
+
+
+def test_provider_error_formatting_remains_available() -> None:
+    assert "Run /compact" in format_provider_error(
+        ContextWindowError("context length too long"),
+        provider="openai",
+        model="gpt",
+    )

@@ -17,6 +17,11 @@ from typing import Annotated
 
 import typer
 
+from pilot_agent.agent.acceptance_blueprints import (
+    get_blueprint,
+    list_blueprints,
+    render_blueprint,
+)
 from pilot_agent.agent.context import ContextManager
 from pilot_agent.agent.loop import AgentLoop, restore_phase_from_session
 from pilot_agent.agent.phases import PHASES
@@ -79,12 +84,14 @@ lessons_app = typer.Typer(help="Manage lessons.")
 sessions_app = typer.Typer(help="Manage sessions.")
 auth_app = typer.Typer(help="Manage credentials.")
 sandbox_app = typer.Typer(help="Manage Docker sandbox image and containers.")
+blueprints_app = typer.Typer(help="Inspect scheduled acceptance blueprints.")
 app.add_typer(skills_app, name="skills")
 app.add_typer(config_app, name="config")
 app.add_typer(lessons_app, name="lessons")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(auth_app, name="auth")
 app.add_typer(sandbox_app, name="sandbox")
+app.add_typer(blueprints_app, name="blueprints")
 console = create_console()
 INIT_PATH_ARGUMENT = typer.Argument(Path("."), help="Project path to initialize.")
 GLOBAL_PROVIDER: str | None = None
@@ -632,6 +639,27 @@ def render_tools_table(cfg: PilotAgentConfig) -> None:
         "vercel token " + ("set" if vercel_key else "from env/ask later"),
     )
     emit(table)
+
+
+@blueprints_app.callback(invoke_without_command=True)
+def blueprints_root(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is not None:
+        return
+    table = simple_table("id", "cadence", "purpose")
+    for blueprint in list_blueprints():
+        table.add_row(blueprint.id, blueprint.cadence, blueprint.purpose)
+    emit(table)
+    emit("Show details with: pilot-agent blueprints show <id>")
+
+
+@blueprints_app.command("show")
+def blueprints_show(blueprint_id: str) -> None:
+    try:
+        blueprint = get_blueprint(blueprint_id)
+    except ValueError as exc:
+        emit(f"Error: {exc}")
+        raise typer.Exit(1) from None
+    emit(render_blueprint(blueprint))
 
 
 @app.command("settings")

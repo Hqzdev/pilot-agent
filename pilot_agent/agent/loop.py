@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 from pilot_agent.agent.context import ContextManager, build_system_prompt
+from pilot_agent.agent.iteration_budget import IterationBudget
 from pilot_agent.agent.memory import Memory, SkillOutcomeRecorder
 from pilot_agent.agent.phases import PHASES, Phase
 from pilot_agent.agent.session_lock import ProjectSessionLock
@@ -77,13 +78,25 @@ class AgentLoop:
 
     def run(self, max_turns: int = 200) -> None:
         with ProjectSessionLock(self.project_root):
-            turns = 0
+            budget = IterationBudget(max_turns)
             interrupts = 0
-            while self.phase is not None and turns < max_turns:
+            while self.phase is not None:
+                if not budget.consume():
+                    write_session_record(
+                        self.project_root,
+                        {
+                            "_type": "iteration_budget_exhausted",
+                            "limit": budget.limit,
+                            "consumed": budget.consumed,
+                        },
+                    )
+                    self.ui.warning(f"iteration budget exhausted after {budget.consumed} turns")
+                    break
                 try:
                     self.run_turn()
                     interrupts = 0
                 except KeyboardInterrupt:
+                    budget.refund()
                     interrupts += 1
                     if interrupts >= 2:
                         write_session_record(
@@ -96,7 +109,6 @@ class AgentLoop:
                         "interrupted - enter a new instruction or /quit; "
                         "a second Ctrl+C exits the session"
                     )
-                turns += 1
 
     def run_turn(self) -> None:
         if self.phase is None:

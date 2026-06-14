@@ -278,6 +278,26 @@ def test_loop_batches_parallel_safe_tool_calls(tmp_path: Path) -> None:
     assert len(loop.history[-1].tool_results) == 2
 
 
+def test_loop_records_iteration_budget_exhaustion(tmp_path: Path) -> None:
+    init_project_state(tmp_path, "Demo")
+    loop = AgentLoop(
+        project_root=tmp_path,
+        provider=CompleteOnlyProvider(),
+        registry=ToolRegistry([NoopTool()], tmp_path),
+        ctx=ContextManager(
+            StaticSummaryProvider(),
+            session_log=tmp_path / ".pilot-agent/session.jsonl",
+        ),
+    )
+
+    loop.run(max_turns=1)
+
+    assert loop.phase is not None
+    assert loop.phase.name == "planning"
+    session_text = (tmp_path / ".pilot-agent" / "session.jsonl").read_text(encoding="utf-8")
+    assert "iteration_budget_exhausted" in session_text
+
+
 def test_loop_pins_loaded_skill_and_records_outcome(tmp_path: Path) -> None:
     init_project_state(tmp_path, "Demo")
     backend = SkillBackend()
