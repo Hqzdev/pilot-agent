@@ -18,6 +18,7 @@ from pilot_agent.agent.types import (
     ToolSpec,
 )
 from pilot_agent.providers.base import Provider, register
+from pilot_agent.providers.hardening import parse_tool_arguments, sanitize_tool_schema
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def openai_tools(tools: Iterable[ToolSpec]) -> list[dict[str, Any]]:
             "function": {
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": tool.parameters,
+                "parameters": sanitize_tool_schema(tool.parameters),
             },
         }
         for tool in tools
@@ -94,20 +95,16 @@ def parse_openai_message(raw_message: Any) -> Message:
         call_id = str(_get(raw_call, "id", ""))
         name = str(_get(function, "name", ""))
         raw_args = _get(function, "arguments", "{}") or "{}"
-        try:
-            args = json.loads(sanitize_text(str(raw_args)))
-            if not isinstance(args, dict):
-                raise ValueError("tool arguments JSON must decode to an object")
-        except (json.JSONDecodeError, ValueError) as exc:
+        parsed = parse_tool_arguments(raw_args, tool_name=name)
+        if not parsed.ok:
             errors.append(
                 ToolResult(
                     tool_call_id=call_id,
-                    content=f"invalid JSON arguments for {name}: {exc}",
+                    content=str(parsed.error),
                     is_error=True,
                 )
             )
-            args = {"_raw_arguments": str(raw_args)}
-        tool_calls.append(ToolCall(id=call_id, name=name, arguments=cast(dict[str, Any], args)))
+        tool_calls.append(ToolCall(id=call_id, name=name, arguments=parsed.arguments))
     if errors:
         return Message(role=Role.TOOL, tool_results=errors)
     return Message(role=Role.ASSISTANT, content=sanitize_text(str(content)), tool_calls=tool_calls)

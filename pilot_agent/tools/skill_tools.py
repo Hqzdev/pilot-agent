@@ -13,6 +13,7 @@ class SkillBackend(Protocol):
 
 class LoadSkillTool(Tool):
     name = "load_skill"
+    parallel_safe = True
     description = "Load the full markdown for a named skill before using that procedure."
     parameters: dict[str, Any] = {
         "type": "object",

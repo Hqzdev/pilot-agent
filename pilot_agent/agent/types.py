@@ -54,13 +54,20 @@ class CompletionResponse:
     usage: dict[str, int]
 
 
-Jsonable = ToolCall | ToolResult | Message | ToolSpec | CompletionResponse
+@dataclass
+class SessionEvent:
+    event_type: str
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+Jsonable = ToolCall | ToolResult | Message | ToolSpec | CompletionResponse | SessionEvent
 _TYPE_MAP = {
     "ToolCall": ToolCall,
     "ToolResult": ToolResult,
     "Message": Message,
     "ToolSpec": ToolSpec,
     "CompletionResponse": CompletionResponse,
+    "SessionEvent": SessionEvent,
 }
 
 
@@ -140,6 +147,13 @@ def _decode_completion(data: dict[str, Any]) -> CompletionResponse:
     )
 
 
+def _decode_session_event(data: dict[str, Any]) -> SessionEvent:
+    return SessionEvent(
+        event_type=str(data["event_type"]),
+        payload=cast(dict[str, Any], data.get("payload") or {}),
+    )
+
+
 def from_json(raw: str) -> Jsonable:
     """Deserialize a canonical dataclass serialized by `to_json`."""
 
@@ -159,4 +173,6 @@ def from_json(raw: str) -> Jsonable:
         return _decode_tool_spec(clean)
     if cls is CompletionResponse:
         return _decode_completion(clean)
+    if cls is SessionEvent:
+        return _decode_session_event(clean)
     raise AssertionError(f"unsupported serialized type: {cls.__name__}")

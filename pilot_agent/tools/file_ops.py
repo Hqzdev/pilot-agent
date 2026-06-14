@@ -51,6 +51,7 @@ class ProjectPaths:
 
 class ReadFileTool(Tool):
     name = "read_file"
+    parallel_safe = True
     description = "Read a file with line numbers for precise edit references."
     parameters: dict[str, Any] = {
         "type": "object",
@@ -80,6 +81,7 @@ class ReadFileTool(Tool):
 
 class WriteFileTool(Tool):
     name = "write_file"
+    path_scope_args = ("path",)
     description = "Create parent directories and overwrite a file inside the project root."
     parameters: dict[str, Any] = {
         "type": "object",
@@ -102,6 +104,7 @@ class WriteFileTool(Tool):
 
 class EditFileTool(Tool):
     name = "edit_file"
+    path_scope_args = ("path",)
     description = "Replace a unique string in a project file; fails unless old_str occurs once."
     parameters: dict[str, Any] = {
         "type": "object",
@@ -132,6 +135,7 @@ class EditFileTool(Tool):
 
 class ListFilesTool(Tool):
     name = "list_files"
+    parallel_safe = True
     description = "List a project tree up to depth 3, ignoring common generated directories."
     parameters: dict[str, Any] = {
         "type": "object",

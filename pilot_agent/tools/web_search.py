@@ -10,6 +10,7 @@ from pilot_agent.tools.search_providers import SearchProvider
 
 class WebSearchTool(Tool):
     name = "web_search"
+    parallel_safe = True
     description = "Search the web and return a numbered list of titles, URLs, and snippets."
     parameters: dict[str, Any] = {
         "type": "object",

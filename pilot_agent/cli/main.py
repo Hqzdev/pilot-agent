@@ -17,6 +17,11 @@ from typing import Annotated
 
 import typer
 
+from pilot_agent.agent.acceptance_blueprints import (
+    get_blueprint,
+    list_blueprints,
+    render_blueprint,
+)
 from pilot_agent.agent.context import ContextManager
 from pilot_agent.agent.loop import AgentLoop, restore_phase_from_session
 from pilot_agent.agent.phases import PHASES
@@ -39,8 +44,8 @@ from pilot_agent.cli.ui.components import create_console, simple_table
 from pilot_agent.cli.ui.input import PilotAgentInput
 from pilot_agent.config.credentials import (
     credential_services,
-    credentials_permissions,
     credentials_path,
+    credentials_permissions,
     get_credential,
     mask_secret,
     remove_credential,
@@ -62,7 +67,7 @@ from pilot_agent.config.schema import (
 from pilot_agent.providers.base import Provider, from_config
 from pilot_agent.skills.registry import SkillRegistry
 from pilot_agent.tools.ask_user import AskUserTool
-from pilot_agent.tools.base import ToolRegistry
+from pilot_agent.tools.base import ToolRegistry, ToolSearchSettings
 from pilot_agent.tools.bash import BashTool
 from pilot_agent.tools.file_ops import EditFileTool, ListFilesTool, ReadFileTool, WriteFileTool
 from pilot_agent.tools.phase_tools import CompletePhaseTool
@@ -79,12 +84,14 @@ lessons_app = typer.Typer(help="Manage lessons.")
 sessions_app = typer.Typer(help="Manage sessions.")
 auth_app = typer.Typer(help="Manage credentials.")
 sandbox_app = typer.Typer(help="Manage Docker sandbox image and containers.")
+blueprints_app = typer.Typer(help="Inspect scheduled acceptance blueprints.")
 app.add_typer(skills_app, name="skills")
 app.add_typer(config_app, name="config")
 app.add_typer(lessons_app, name="lessons")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(auth_app, name="auth")
 app.add_typer(sandbox_app, name="sandbox")
+app.add_typer(blueprints_app, name="blueprints")
 console = create_console()
 INIT_PATH_ARGUMENT = typer.Argument(Path("."), help="Project path to initialize.")
 GLOBAL_PROVIDER: str | None = None
@@ -193,7 +200,11 @@ def build_tool_registry(
         tools.append(WebFetchTool())
     for tool in tools:
         tool.timeout_s = cfg.tool_timeout_s
-    return ToolRegistry(tools, project_root)
+    return ToolRegistry(
+        tools,
+        project_root,
+        tool_search=ToolSearchSettings.from_raw(cfg.tools.tool_search),
+    )
 
 
 def run_loop(cfg: PilotAgentConfig) -> None:
@@ -571,15 +582,18 @@ def tools_command(
         render_tools_table(cfg)
         emit("Change with: pilot-agent tools <web_search|web_fetch|deploy> --enable|--disable")
         return
-    if tool not in {"web_search", "web_fetch", "deploy"}:
-        emit("Error: unknown tool. Use web_search, web_fetch, or deploy")
+    if tool not in {"web_search", "web_fetch", "deploy", "tool_search"}:
+        emit("Error: unknown tool. Use web_search, web_fetch, deploy, or tool_search")
         raise typer.Exit(1)
     if enable and disable:
         emit("Error: choose only one of --enable or --disable")
         raise typer.Exit(1)
     updates: dict[str, object] = {}
     if enable or disable:
-        updates[f"tools.{tool}.enabled"] = enable
+        enabled_value: object = "on" if enable else "off"
+        if tool != "tool_search":
+            enabled_value = enable
+        updates[f"tools.{tool}.enabled"] = enabled_value
     if provider is not None:
         if tool != "web_search":
             emit("Error: --provider applies only to web_search")
@@ -610,6 +624,11 @@ def render_tools_table(cfg: PilotAgentConfig) -> None:
         "✓ enabled" if cfg.tools.web_fetch.enabled else "✗ disabled",
         "SSRF checks",
     )
+    table.add_row(
+        "tool_search",
+        f"{cfg.tools.tool_search.enabled}",
+        f"threshold {cfg.tools.tool_search.threshold_pct:g}%",
+    )
     vercel_key = get_credential("vercel", home, env_name=cfg.phases.deploy.vercel_token_env)
     deploy_state = (
         "✓ enabled" if cfg.tools.deploy.enabled or cfg.phases.deploy.enabled else "✗ disabled"
@@ -620,6 +639,27 @@ def render_tools_table(cfg: PilotAgentConfig) -> None:
         "vercel token " + ("set" if vercel_key else "from env/ask later"),
     )
     emit(table)
+
+
+@blueprints_app.callback(invoke_without_command=True)
+def blueprints_root(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is not None:
+        return
+    table = simple_table("id", "cadence", "purpose")
+    for blueprint in list_blueprints():
+        table.add_row(blueprint.id, blueprint.cadence, blueprint.purpose)
+    emit(table)
+    emit("Show details with: pilot-agent blueprints show <id>")
+
+
+@blueprints_app.command("show")
+def blueprints_show(blueprint_id: str) -> None:
+    try:
+        blueprint = get_blueprint(blueprint_id)
+    except ValueError as exc:
+        emit(f"Error: {exc}")
+        raise typer.Exit(1) from None
+    emit(render_blueprint(blueprint))
 
 
 @app.command("settings")

@@ -6,7 +6,15 @@ import re
 from pathlib import Path
 
 from pilot_agent.agent.safety import redact_sensitive_text
-from pilot_agent.agent.types import CompletionResponse, Message, Role, ToolResult, ToolSpec
+from pilot_agent.agent.types import (
+    CompletionResponse,
+    Message,
+    Role,
+    SessionEvent,
+    ToolResult,
+    ToolSpec,
+    to_json,
+)
 from pilot_agent.providers.base import Provider
 
 SUMMARY_PROMPT = """Compress the agent work history into a state document.
@@ -32,6 +40,10 @@ class ContextManager:
         self.summarizer = summarizer or provider
         self.session_log = session_log
         self._ineffective_compactions = 0
+        session_anchor = str(session_log.resolve()) if session_log is not None else "memory"
+        self._root_session_id = session_anchor
+        self._current_session_id = f"{session_anchor}#0"
+        self._compaction_depth = 0
 
     def prepare(self, system: str, history: list[Message]) -> list[Message]:
         prepared = copy.deepcopy(history)
@@ -67,7 +79,7 @@ class ContextManager:
     def _truncate_tool_results(self, system: str, history: list[Message]) -> list[Message]:
         cutoff = self._last_turn_start(history, turns=5)
         seen_tool_outputs: dict[str, str] = {}
-        for message in reversed(history[:cutoff]):
+        for message in history[:cutoff]:
             if message.role is not Role.TOOL:
                 continue
             for result in message.tool_results:
@@ -181,20 +193,31 @@ class ContextManager:
     def _write_compaction_event(self, before: int, after: int) -> None:
         if self.session_log is None:
             return
+        next_depth = self._compaction_depth + 1
+        parent_session_id = self._current_session_id
+        current_session_id = f"{self._root_session_id}#{next_depth}"
+        event = SessionEvent(
+            event_type="compaction",
+            payload={
+                "before_tokens": before,
+                "after_tokens": after,
+                "saved_tokens": max(0, before - after),
+                "ineffective_count": self._ineffective_compactions,
+                "provenance": {
+                    "root_session_id": self._root_session_id,
+                    "parent_session_id": parent_session_id,
+                    "current_session_id": current_session_id,
+                    "session_kind": "continuation",
+                    "creator_kind": "compaction",
+                    "compaction_depth": next_depth,
+                },
+            },
+        )
         self.session_log.parent.mkdir(parents=True, exist_ok=True)
         with self.session_log.open("a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(
-                    {
-                        "_type": "compaction",
-                        "before_tokens": before,
-                        "after_tokens": after,
-                        "saved_tokens": max(0, before - after),
-                        "ineffective_count": self._ineffective_compactions,
-                    }
-                )
-                + "\n"
-            )
+            handle.write(to_json(event) + "\n")
+        self._current_session_id = current_session_id
+        self._compaction_depth = next_depth
 
 
 def build_system_prompt(

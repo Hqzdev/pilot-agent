@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from pilot_agent.agent.safety import redact_sensitive_text, sanitize_text
-from pilot_agent.agent.types import Message, from_json, to_json
+from pilot_agent.agent.types import Message, SessionEvent, from_json, to_json
 
 TASKS_HEADING = "TO" + "DO"
 STATE_TEMPLATE = """# Project: {name}
@@ -65,11 +65,14 @@ def append_reentry_request(project_root: Path, *, kind: str, description: str) -
     path.write_text(_append_to_section(text, TASKS_HEADING, task), encoding="utf-8")
 
 
-def write_session_record(project_root: Path, record: Message | dict[str, Any]) -> None:
+def write_session_record(
+    project_root: Path,
+    record: Message | SessionEvent | dict[str, Any],
+) -> None:
     pilot_agent_dir(project_root).mkdir(parents=True, exist_ok=True)
     line = (
         to_json(record)
-        if isinstance(record, Message)
+        if isinstance(record, (Message, SessionEvent))
         else json.dumps(record, ensure_ascii=False)
     )
     line = redact_sensitive_text(sanitize_text(line))
