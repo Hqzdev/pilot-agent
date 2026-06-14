@@ -39,8 +39,8 @@ from pilot_agent.cli.ui.components import create_console, simple_table
 from pilot_agent.cli.ui.input import PilotAgentInput
 from pilot_agent.config.credentials import (
     credential_services,
-    credentials_permissions,
     credentials_path,
+    credentials_permissions,
     get_credential,
     mask_secret,
     remove_credential,
@@ -79,12 +79,14 @@ lessons_app = typer.Typer(help="Manage lessons.")
 sessions_app = typer.Typer(help="Manage sessions.")
 auth_app = typer.Typer(help="Manage credentials.")
 sandbox_app = typer.Typer(help="Manage Docker sandbox image and containers.")
+gateway_app = typer.Typer(help="Run chat gateway adapters.")
 app.add_typer(skills_app, name="skills")
 app.add_typer(config_app, name="config")
 app.add_typer(lessons_app, name="lessons")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(auth_app, name="auth")
 app.add_typer(sandbox_app, name="sandbox")
+app.add_typer(gateway_app, name="gateway")
 console = create_console()
 INIT_PATH_ARGUMENT = typer.Argument(Path("."), help="Project path to initialize.")
 GLOBAL_PROVIDER: str | None = None
@@ -723,6 +725,54 @@ def resume(
     resolve_key_or_exit(cfg)
     _ensure_project_for_run(resume_mode=True)
     run_loop(cfg)
+
+
+@gateway_app.command("status")
+def gateway_status() -> None:
+    cfg = load_config_or_exit()
+    table = simple_table("field", "value")
+    table.add_row("telegram.bot_token_env", cfg.gateway.telegram_bot_token_env)
+    table.add_row(
+        "telegram.bot_token_present",
+        str(bool(os.environ.get(cfg.gateway.telegram_bot_token_env))).lower(),
+    )
+    table.add_row("telegram.allowed_users_env", cfg.gateway.telegram_allowed_users_env)
+    table.add_row("gateway.allow_all_users_env", cfg.gateway.allow_all_users_env)
+    emit(table)
+
+
+@gateway_app.command("run")
+def gateway_run(
+    platform: str = typer.Option("telegram", "--platform"),
+    once: bool = typer.Option(False, "--once", help="Poll one batch and exit."),
+    provider: str | None = typer.Option(None, "--provider"),
+    model: str | None = typer.Option(None, "--model"),
+) -> None:
+    if platform != "telegram":
+        emit("Error: only telegram gateway is available in this PR")
+        raise typer.Exit(1)
+    _ensure_config_for_run()
+    cfg = load_config_or_exit(provider=provider, model=model)
+    resolve_key_or_exit(cfg)
+    try:
+        from pilot_agent.gateway.core import authorizer_from_config
+        from pilot_agent.gateway.runner import run_polling
+        from pilot_agent.gateway.telegram import TelegramAdapter
+
+        adapter = TelegramAdapter.from_env(
+            cfg.gateway.telegram_bot_token_env,
+            poll_timeout_s=cfg.gateway.telegram_poll_timeout_s,
+        )
+        run_polling(
+            adapter,
+            cfg=cfg,
+            authorizer=authorizer_from_config(cfg),
+            project_root=Path(".").resolve(),
+            once=once,
+        )
+    except RuntimeError as exc:
+        emit(f"Error: {exc}")
+        raise typer.Exit(1) from None
 
 
 @config_app.callback(invoke_without_command=True)

@@ -54,6 +54,14 @@ class UIConfig(BaseModel):
     show_token_counter: bool = True
 
 
+class GatewayConfig(BaseModel):
+    allow_all_users_env: str = "PILOT_AGENT_GATEWAY_ALLOW_ALL_USERS"
+    max_turns_per_event: int = 20
+    telegram_bot_token_env: str = "PILOT_AGENT_TELEGRAM_BOT_TOKEN"
+    telegram_allowed_users_env: str = "PILOT_AGENT_TELEGRAM_ALLOWED_USERS"
+    telegram_poll_timeout_s: int = 30
+
+
 class SandboxConfig(BaseModel):
     image: str = "pilot-agent-sandbox:latest"
     network: Literal["bridge", "none"] = "bridge"
@@ -108,6 +116,7 @@ class PilotAgentConfig(ProviderConfig):
     phases: PhasesConfig = Field(default_factory=PhasesConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
+    gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     sources: dict[str, str] = Field(default_factory=dict)
 
 
@@ -201,6 +210,11 @@ def _env_map() -> dict[str, str]:
         "tools.deploy.enabled": "PILOT_AGENT_TOOLS_DEPLOY_ENABLED",
         "ui.color": "PILOT_AGENT_UI_COLOR",
         "ui.show_token_counter": "PILOT_AGENT_UI_SHOW_TOKEN_COUNTER",
+        "gateway.allow_all_users_env": "PILOT_AGENT_GATEWAY_ALLOW_ALL_USERS_ENV",
+        "gateway.max_turns_per_event": "PILOT_AGENT_GATEWAY_MAX_TURNS_PER_EVENT",
+        "gateway.telegram_bot_token_env": "PILOT_AGENT_TELEGRAM_BOT_TOKEN_ENV",
+        "gateway.telegram_allowed_users_env": "PILOT_AGENT_TELEGRAM_ALLOWED_USERS_ENV",
+        "gateway.telegram_poll_timeout_s": "PILOT_AGENT_TELEGRAM_POLL_TIMEOUT_S",
     }
 
 

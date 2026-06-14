@@ -32,7 +32,7 @@ work complete until verification has run.
 Linux, macOS, and WSL2:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash
+curl -fsSL https://pilotagent.vercel.app/install.sh | bash
 ```
 
 Prefer to inspect first? Download `install.sh`, read it, run it.
@@ -43,9 +43,9 @@ available. Use `--skip-setup` or `--no-setup` to install only.
 Useful installer options:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash -s -- --skip-setup
-curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash -s -- --native
-curl -fsSL https://raw.githubusercontent.com/Hqzdev/pilot-agent/main/install.sh | bash -s -- --docker --branch main
+curl -fsSL https://pilotagent.vercel.app/install.sh | bash -s -- --skip-setup
+curl -fsSL https://pilotagent.vercel.app/install.sh | bash -s -- --native
+curl -fsSL https://pilotagent.vercel.app/install.sh | bash -s -- --docker --branch main
 ```
 
 <details><summary>Windows</summary>

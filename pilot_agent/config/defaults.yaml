@@ -29,3 +29,9 @@ tools:
 ui:
   color: auto
   show_token_counter: true
+gateway:
+  allow_all_users_env: PILOT_AGENT_GATEWAY_ALLOW_ALL_USERS
+  max_turns_per_event: 20
+  telegram_bot_token_env: PILOT_AGENT_TELEGRAM_BOT_TOKEN
+  telegram_allowed_users_env: PILOT_AGENT_TELEGRAM_ALLOWED_USERS
+  telegram_poll_timeout_s: 30
